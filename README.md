@@ -6,7 +6,9 @@ The Stale Playlist Detector (SPD) is a tool developed in Node.js to monitor live
 
 The Stale Playlist Detector (SPD) will use data in the top-level playlist, the child playlists, and other information provided by the operator to determine the time by which each playlist should change. It will regularly sample each playlist at an interval calculated from the playlist's segment time and test for changes by a predetermined deadline. If enough playlists do not change by the deadline, the SPD can issue a notification through SNS or SQS to alert operators or other automated systems there may be a problem with the monitored live stream.
 
+<br/><br/>
 ![SPD Top-Level Diagram](stale-playlist-detector.jpeg)
+<br/><br/>
 
 Read about the [design and operational details](DESIGN.md) of the SPD.
 
