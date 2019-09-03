@@ -134,4 +134,4 @@ Once enough playlists have changed, the SPD will report the origin as fresh and 
 
 ## Navigate
 
-Navigate to [README](README.md) | [Install](INSTALL.md) | [Design](DESIGN.md)
+Navigate to [README](README.md) | [INSTALL](INSTALL.md) | [DESIGN](DESIGN.md)

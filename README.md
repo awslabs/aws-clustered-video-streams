@@ -12,8 +12,8 @@ The Stale Playlist Detector (SPD) will use data in the top-level playlist, the c
 
 Read about the [design and operational details](DESIGN.md) of the SPD.
 
-Continue to the [install](INSTALL.md) guide and try the SPD for yourself.
+Continue to the [INSTALL](INSTALL.md) guide and try the SPD for yourself.
 
 ## Navigate
 
-Navigate to [README](README.md) | [Install](INSTALL.md) | [Design](DESIGN.md)
+Navigate to [README](README.md) | [INSTALL](INSTALL.md) | [DESIGN](DESIGN.md)

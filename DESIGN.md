@@ -131,5 +131,4 @@ The `detector` block at end includes summary data that includes a count of total
 
 ## Navigate
 
-Navigate to [README](README.md) | [Install](INSTALL.md) | [Design](DESIGN.md)
-
+Navigate to [README](README.md) | [INSTALL](INSTALL.md) | [DESIGN](DESIGN.md)
