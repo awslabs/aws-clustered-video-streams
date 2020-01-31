@@ -1,0 +1,240 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy a service on AWS Fargate, hosted in a private subnet, that monitors an HLS video stream 
+             and reports stream health metrics to and SQS queue and SNS Topic.
+
+             Fargate configuration adapted from -
+                https://github.com/awslabs/aws-cloudformation-templates/blob/master/aws/services/ECS/FargateLaunchType/services/private-subnet-private-service.yml
+Parameters:
+  ClusterStackName:
+    Type: String
+    Default: spdcluster
+    Description: The name of the parent Fargate networking stack that you created. Necessary
+                 to locate and reference resources created by that stack.
+  ServiceName:
+    Type: String
+    Default: spd
+    Description: A name for the service
+  ImageUrl:
+    Type: String
+    Default: jtthario/spd:latest
+    Description: The url of a docker image that contains the application process that
+                 will handle the traffic for this service
+  ContainerCpu:
+    Type: Number
+    Default: 1024
+    Description: How much CPU to give the container. 1024 is 1 CPU
+  ContainerMemory:
+    Type: Number
+    Default: 2048
+    Description: How much memory in megabytes to give the container
+  SPDName:
+    Type: String
+    Default: Stale Playlist Detector
+    Description: Any string to identify this instance of the SPD for humans
+  CDNUrl:
+    Type: String
+    Default: https://d1e265hh6vprk4.cloudfront.net/out/v1/6b7de0c522004ff8b9fd51e49990be84/index.m3u8
+    Description: CDN endpoint (http or https) of the video stream you want to monitor
+  OriginUrl: 
+    Type: String
+    Default: https://f7b399c8cf81ac81.mediapackage.eu-west-1.amazonaws.com/out/v1/6b7de0c522004ff8b9fd51e49990be84/index.m3u8
+    Description: Origin (e.g. MediaPackage) endpoint (http or https) of the video stream you want to monitor
+  SPDDurationMultiplier:
+    Type: Number
+    Default: 1.5
+    Description: Segment duration * multipler = maximum time allowed between playlist changes
+  SPDStaleTolerance:
+    Type: Number
+    Default: 0.95
+    Description: Fraction of playlists that must be stale in order to trigger a notification
+  SPDChangeDetect:
+    Type: String
+    Default: MEDIASEQUENCE
+    Description: Method to determine when playlist changes (MEDIASEQUENCE or CONTENTHASH). MEDIASEQUENCE watches 
+        how often a new segment is added to the playlist for each stream in the adaptive bitrate stack.  
+        CONTENTHASH watches for changes to the content of the playlist for each stream in the adaptive bitrate 
+        stack.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Fargate Service Configuration Parameters
+        Parameters:
+          - ClusterStackName
+          - ServiceName
+          - ImageUrl
+          - ContainerCpu
+          - ContainerMemory
+      - Label:
+          default: Stream Monitoring Configuration Parameters
+        Parameters:
+          - SPDName
+          - CDNUrl
+          - OriginUrl
+          - SPDDurationMultiplier
+          - SPDStaleTolerance
+          - SPDChangeDetect
+
+Resources:
+
+  Topic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+  TopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Id: Id1
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Sid1
+          Effect: Allow
+          Principal:
+            Service:
+            - 'events.amazonaws.com' # Allow CloudWatch Events
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+        - Sid: Sid2
+          Effect: Allow
+          Principal:
+            AWS: '*' # Allow CloudWatch Alarms, ElastiCache Notifications, Elastic Beanstalk Notifications, Auto Scaling Notification
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+          Condition:
+            StringEquals:
+              'AWS:SourceOwner': !Ref 'AWS::AccountId'
+        - Sid: Sid3
+          Effect: Allow
+          Principal:
+            Service: 'ses.amazonaws.com' # Allow SES Notifications & Events
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+          Condition:
+            StringEquals:
+              'AWS:Referer': !Ref 'AWS::AccountId'
+      Topics:
+      - !Ref Topic
+  Queue:
+    Type: AWS::SQS::Queue
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['', [/ecs/, !Ref ServiceName, TaskDefinition]]
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: AmazonSPDTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'sqs:SendMessage'
+              Resource: !GetAtt Queue.Arn
+            - Effect: Allow
+              Action:
+                - 'sns:Publish'
+              Resource: !Ref Topic
+
+  # The task definition. This is a simple metadata description of what
+  # container to run, and what resource requirements it has.
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref 'ServiceName'
+      Cpu: !Ref 'ContainerCpu'
+      Memory: !Ref 'ContainerMemory'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn:
+        Fn::ImportValue:
+          !Join [':', [!Ref 'ClusterStackName', 'ECSTaskExecutionRole']]
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: !Ref 'ServiceName'
+          Cpu: !Ref 'ContainerCpu'
+          Memory: !Ref 'ContainerMemory'
+          Image: !Ref 'ImageUrl'
+          Environment:
+            - Name: SPD_CDN_URL
+              Value: !Ref CDNUrl
+            - Name: SPD_ORIGIN_URL
+              Value: !Ref OriginUrl
+            - Name: SPD_SNS_TOPIC
+              Value: !Ref Topic
+            - Name: SPD_SQS_URL
+              Value: !Ref Queue
+            - Name: SPD_DURATION_MULTIPLIER
+              Value: !Ref SPDDurationMultiplier
+            - Name: SPD_NAME
+              Value: !Ref SPDName 
+            - Name: SPD_STALE_TOLERANCE
+              Value: !Ref SPDStaleTolerance 
+            - Name: SPD_CHANGE_DETECT
+              Value: !Ref SPDChangeDetect
+          # Send logs to CloudWatch Logs
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref LogGroup
+              awslogs-stream-prefix: ecs                  
+
+  # The service. The service is a resource which allows you to run multiple
+  # copies of a type of task, and gather up their logs and metrics, as well
+  # as monitor the number of running tasks and replace any that have crashed
+  Service:
+    Type: AWS::ECS::Service
+    # DependsOn: LoadBalancerRule
+    Properties:
+      ServiceName: !Ref 'ServiceName'
+      Cluster:
+        Fn::ImportValue:
+          !Join [':', [!Ref 'ClusterStackName', 'ClusterName']]
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - Fn::ImportValue:
+                !Join [':', [!Ref 'ClusterStackName', 'FargateContainerSecurityGroup']]
+          Subnets:
+            - Fn::ImportValue:
+                !Join [':', [!Ref 'ClusterStackName', 'PrivateSubnetOne']]
+            - Fn::ImportValue:
+                !Join [':', [!Ref 'ClusterStackName', 'PrivateSubnetTwo']]
+      TaskDefinition: !Ref 'TaskDefinition'
+      
+Outputs:
+  ModuleId:
+    Value: 'spdservice'
+  ModuleVersion:
+    Value: '1.0.0'
+  StackName:
+    Value: !Ref 'AWS::StackName'
+  TopicArn:
+    Value: !Ref Topic
+    Export:
+      Name: !Sub '${AWS::StackName}-TopicArn'
+  QueueArn:
+    Value: !GetAtt Queue.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-QueueArn'
+  QueueUrl:
+    Value: !Ref Queue
+    Export:
+      Name: !Sub '${AWS::StackName}-QueueUrl'
