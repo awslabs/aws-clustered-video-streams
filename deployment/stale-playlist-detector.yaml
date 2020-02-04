@@ -64,11 +64,9 @@ Parameters:
     Description: Any string to identify this instance of the SPD for humans
   CDNUrl:
     Type: String
-    Default: https://d1e265hh6vprk4.cloudfront.net/out/v1/6b7de0c522004ff8b9fd51e49990be84/index.m3u8
     Description: CDN endpoint (http or https) of the video stream you want to monitor
   OriginUrl: 
     Type: String
-    Default: https://f7b399c8cf81ac81.mediapackage.eu-west-1.amazonaws.com/out/v1/6b7de0c522004ff8b9fd51e49990be84/index.m3u8
     Description: Origin (e.g. MediaPackage) endpoint (http or https) of the video stream you want to monitor
   SPDDurationMultiplier:
     Type: Number
