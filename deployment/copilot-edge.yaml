@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: A "VideoStreamSet" is a set of redundant HLS video streams deployed on stream per region 
+Description: A "ClusteredVideoStream" is a set of redundant HLS video streams deployed on stream per region 
     that are managed using a CloudFront Copilot.  This stack deploys the cloudfront copilot component 
-    in a single region for a specific VideoStreamSet.  
+    in a single region for a specific ClusteredVideoStream.  
 
 Mappings:
   SourceCode:
@@ -13,7 +13,7 @@ Parameters:
   PlaylistAlertTopicARN:
     Type: String 
     Description: ARN of SNS Topic where  playlist alerts are published.
-  VideoStreamSetName: 
+  ClusteredVideoStreamName: 
     Type: String
     Description: Unique name to identify this collection of redundant streams
   CopilotLambdaArn:
@@ -46,12 +46,12 @@ Resources:
           KeyType: "HASH"
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
-      TableName: !Ref VideoStreamSetName
+      TableName: !Ref ClusteredVideoStreamName
       Tags:
         - Key: Stack
           Value: !Ref 'AWS::StackName'
-        - Key: VideoStreamSetName
-          Value: !Ref VideoStreamSetName
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
 
   PlaylistAlertTrigger:
     Type: AWS::SNS::Subscription
@@ -220,8 +220,8 @@ Resources:
       Tags:
         - Key: Stack
           Value: !Ref 'AWS::StackName'
-        - Key: VideoStreamSetName
-          Value: !Ref VideoStreamSetName
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
   
   CloudfrontEdgeLambdaConfig:
     Type: Custom::CloudfrontEdgeLambda
