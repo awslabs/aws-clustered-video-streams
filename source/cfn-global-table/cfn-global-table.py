@@ -1,3 +1,6 @@
+// Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 # Adapted from: https://github.com/kspurrier/cfn-dynamodb-global-table/blob/master/DynamoDBGlobalTableCreate/dynamoDBGlobalTableCreate.py
 
 import boto3

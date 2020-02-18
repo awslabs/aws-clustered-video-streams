@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A "ClusteredVideoStream" is a set of redundant HLS video streams deployed one stream per region 
+    that are managed using a CloudFront Copilot.   The video viewer access the clustered stream through a master
+    playlist that contains the redundant bitrate playlists for all the origins that are distributed across 
+    AWS regions.  When the health of a stream for a region is degraded, the copilot lambda@edge forces a 404
+    HTTP response when segments are requested from that region.  This will trigger the video player (viewer) to 
+    try to get the bitrate from one of the other redundant bitrate playlists in the master playlist.
+    
+    This stack deploys a cloudfront distribution with an S3 origin containing the redundant bitrate playlists 
+    for all the origins that are distributed across AWS regions.  The master playlist is duplicated in muiliple S3
+    regions to avoid a single point of failure.  
+
+    # Manual steps after this deploy
+
+    # The master playlist must be created manually in each bucket.
+    # Create and origin group from the output origins from this sript and then add the
+    # origin group to the distribution output by this script.
+
+    # FIXME - add second region playlist
+
+Mappings:
+  SourceCode:
+    General:
+      S3Bucket: "%%BUCKET_NAME%%"
+      KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
+  
+Parameters:
+  ClusteredVideoStreamName:
+    Type: String 
+    Description: Name of the clustered video stream
+  RegionOne: 
+    Type: String
+    Default: eu-west-2
+    Description: Name of the AWS region for the first playlist
+  RegionTwo: 
+    Type: String
+    Default: eu-west-1
+    Description: Name of the AWS region for the second playlist
+  
+Resources:
+
+  RegionOnePlaylistBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+
+        
+  # RegionTwoPlaylistBucket:
+  #   Type: AWS::S3::Bucket
+  #   DeletionPolicy: Retain
+  # RegionTwoOriginAccessIdentity:
+    
+  RegionOneOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "access-identity-${RegionOnePlaylistBucket}"
+
+  RegionOnePlaylistBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket:
+        Ref: "RegionOnePlaylistBucket"
+      PolicyDocument:
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "s3:*"
+            Resource:
+              - !Sub '${RegionOnePlaylistBucket.Arn}/*'
+            Principal:
+              CanonicalUser: !GetAtt RegionOneOriginAccessIdentity.S3CanonicalUserId
+
+  MasterPlaylistCloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:   
+        Comment: !Sub "Master playlist for ClusteredVideoStream: ${ClusteredVideoStreamName}" 
+        Origins:
+        - Id: S3-region-one
+          DomainName: !Sub "${RegionOnePlaylistBucket}.s3.${RegionOne}.amazonaws.com"
+          S3OriginConfig:
+            OriginAccessIdentity:
+              Fn::Sub:
+                - "origin-access-identity/cloudfront/${RegionOneOriginAccessIdentity}"
+                - RegionOneOriginAccessIdentity: !Ref RegionOneOriginAccessIdentity
+       
+        # - Id: S3-region-two
+        #   DomainName: !Sub "${S3ClusteredPlayListRegionTwo}.s3.${RegionTwo}.amazonaws.com"
+        #   S3OriginConfig:
+        #     OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${RegionTwoOriginAccessIdentity}"
+        DefaultCacheBehavior: 
+          AllowedMethods: 
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods: 
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues: 
+            QueryString: 'false'
+            Headers:
+              - Origin
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+          TargetOriginId: S3-region-one
+          ViewerProtocolPolicy: redirect-to-https        
+        DefaultRootObject: "index.m3u8" 
+        IPV6Enabled: 'true'
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: 'true'
+        Enabled: 'true'
+        HttpVersion: 'http2'
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+      
+Outputs:
+  ModuleId:
+    Value: 'stale-playlist-detector'
+  ModuleVersion:
+    Value: '1.0.0'
+  StackName:
+    Value: !Ref 'AWS::StackName'
+  PlaylistDomain:
+    Description: The domain of the ClusterVideoStream CloudFront distribution
+    Value: !GetAtt MasterPlaylistCloudfrontDistribution.DomainName
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PlaylistDomain'] ]
+   

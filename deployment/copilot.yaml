@@ -10,7 +10,7 @@ Description: Create a lambda function to be deployed at video stream edge locati
   
 Parameters:
 
-  VideoStreamSetName: 
+  ClusteredVideoStreamName: 
     Type: String
     Default: 'eu-west-1'
     Description: Unique name to identify this collection of redundant streams
@@ -60,7 +60,7 @@ Resources:
                 Effect: Allow
               - Action:
                   - 'dynamodb:GetItem'
-                Resource: !Join ['/', ['arn:aws:dynamodb:*:*:table', !Ref VideoStreamSetName]]
+                Resource: !Join ['/', ['arn:aws:dynamodb:*:*:table', !Ref ClusteredVideoStreamName]]
                 Effect: Allow
               
                
@@ -95,7 +95,7 @@ Resources:
               "${StreamRegionTwoOriginDomain}": "${RegionTwo}"
           }
 
-          TABLE_NAME = "${VideoStreamSetName}"
+          TABLE_NAME = "${ClusteredVideoStreamName}"
 
           def origin_request(event, context):
             """
@@ -127,8 +127,8 @@ Resources:
       Tags:
         - Key: Stack
           Value: !Ref 'AWS::StackName'
-        - Key: VideoStreamSetName
-          Value: !Ref VideoStreamSetName
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
   
   OriginLambdaVersion:
     Type: AWS::Lambda::Version

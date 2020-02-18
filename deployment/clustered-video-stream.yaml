@@ -8,16 +8,16 @@ Metadata:
     - Label:
         default: 'Lambda Utility Parameters'
       Parameters:
-      - VideoStreamSetName
+      - ClusteredVideoStreamName
       - DynamoDBTableExists
       - ReplicationGroupList
       - LogLevel
 
 Parameters:
-  VideoStreamSetName:
+  ClusteredVideoStreamName:
     Description: 'Name to use when creating the DynamoDB table'
     Type: String
-    Default: 'VideoStreamSet'
+    Default: 'ClusteredVideoStream'
     AllowedPattern: '[a-zA-Z0-9_.-]+'
     MaxLength: 255
     MinLength: 3
@@ -64,8 +64,8 @@ Resources:
       Tags:
         - Key: Stack
           Value: !Ref 'AWS::StackName'
-        - Key: VideoStreamSetName
-          Value: !Ref VideoStreamSetName
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
 
   DynamoDBGlobalTableCreateRole:
     Type: AWS::IAM::Role
@@ -126,19 +126,19 @@ Resources:
           KeyType: "HASH"
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
-      TableName: !Ref VideoStreamSetName
+      TableName: !Ref ClusteredVideoStreamName
       Tags:
         - Key: Stack
           Value: !Ref 'AWS::StackName'
-        - Key: VideoStreamSetName
-          Value: !Ref VideoStreamSetName
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
 
 
   DynamoDBGlobalTable:
       Type: Custom::DynamoDBGlobalTableCreate
       Properties:
           ServiceToken: !GetAtt DynamoDBGlobalTableCreate.Arn
-          GlobalTableName: !If [ CreateDynamoDBResource, !Ref PlaylistStateTable, !Ref VideoStreamSetName ]
+          GlobalTableName: !If [ CreateDynamoDBResource, !Ref PlaylistStateTable, !Ref ClusteredVideoStreamName ]
           ReplicationGroupList: !Ref ReplicationGroupList
 
 
