@@ -62,12 +62,14 @@ Parameters:
     Type: String
     Default: Stale Playlist Detector
     Description: Any string to identify this instance of the SPD for humans
-  CDNUrl:
+  DistributionPlaylistUrl:
     Type: String
-    Description: CDN endpoint (http or https) of the video stream you want to monitor
-  OriginUrl: 
+    Description: CDN endpoint (http or https) of the video stream playlist you want to monitor.  (e.g. https://x1x111xx1xxx1.cloudfront.net/out/v1/1x1xx1x11111xx811xx11x11111xx11/index.m3u8).  
+                 This is the endpoint that is consumed by player clients
+  OriginPlaylistUrl: 
     Type: String
-    Description: Origin (e.g. MediaPackage) endpoint (http or https) of the video stream you want to monitor
+    Description: Origin (e.g. MediaPackage) endpoint (http or https) of the video stream you want to monitor.  This is the playlist that is being produced
+                 but is not meant for client distribution.
   SPDDurationMultiplier:
     Type: Number
     Default: 3.0
@@ -84,7 +86,7 @@ Parameters:
         how often a new segment is added to the playlist for each stream in the adaptive bitrate stack.  
         CONTENTHASH watches for changes to the content of the playlist for each stream in the adaptive bitrate 
         stack.
-
+  
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -99,8 +101,8 @@ Metadata:
           default: Stream Monitoring Configuration Parameters
         Parameters:
           - SPDName
-          - CDNUrl
-          - OriginUrl
+          - DistributionPlaylistUrl
+          - OriginPlaylistUrl
           - SPDDurationMultiplier
           - SPDStaleTolerance
           - SPDChangeDetect
@@ -450,9 +452,9 @@ Resources:
           Image: !Ref 'ImageUrl'
           Environment:
             - Name: SPD_CDN_URL
-              Value: !Ref CDNUrl
+              Value: !Ref DistributionPlaylistUrl
             - Name: SPD_ORIGIN_URL
-              Value: !Ref OriginUrl
+              Value: !Ref OriginPlaylistUrl
             - Name: SPD_SNS_TOPIC
               Value: !Ref Topic
             - Name: SPD_SQS_URL

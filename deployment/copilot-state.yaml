@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "DynamoDB Global Table Lambda Utility"
+
+# Organizes How the Parameters appear in the CloudFormation Interface
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Lambda Utility Parameters'
+      Parameters:
+      - VideoStreamSetName
+      - DynamoDBTableExists
+      - ReplicationGroupList
+      - LogLevel
+
+Parameters:
+  VideoStreamSetName:
+    Description: 'Name to use when creating the DynamoDB table'
+    Type: String
+    Default: 'VideoStreamSet'
+    AllowedPattern: '[a-zA-Z0-9_.-]+'
+    MaxLength: 255
+    MinLength: 3
+  DynamoDBTableExists:
+    Description: 'The DynamoDB table already exists, and cannot be created as a resource. (Must match the name in the previous parameter)'
+    Type: String
+    Default: false
+    AllowedValues: [true, false]
+  ReplicationGroupList:
+    Description: 'Comma delimited list of regions to included in the replication group (currently limited to: us-east-1,us-east-2,us-west-2,eu-west-1,eu-central-1,ap-southeast-1,ap-southeast-2,ap-northeast-1,ap-northeast-2)'
+    Type: CommaDelimitedList
+    Default: 'us-east-1,us-west-2'
+  LogLevel:
+    Description: 'Log Level for the DynamoDB Global Table creation Custom Resource'
+    Type: String
+    Default: 'WARNING'
+    AllowedValues: [ 'DEBUG', 'INFO', 'WARNING', 'ERROR' ]
+
+Conditions:
+  CreateDynamoDBResource: !Equals [ !Ref DynamoDBTableExists, 'false' ]
+
+Mappings:
+  SourceCode:
+    General:
+      S3Bucket: "%%BUCKET_NAME%%"
+      KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
+
+Resources:
+  DynamoDBGlobalTableCreate:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: cfn-global-table.handler
+      Description:  'Check for existence of a DynamoDB Global Table in provided Regions, create it if it does not exist'
+      Role: !GetAtt DynamoDBGlobalTableCreateRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Runtime: python2.7
+      Environment:
+        Variables:
+          LoggingLevel: !Ref LogLevel
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"], "cfn-global-table.zip"]] 
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: VideoStreamSetName
+          Value: !Ref VideoStreamSetName
+
+  DynamoDBGlobalTableCreateRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+               - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: 'lambda-dynamodb-global-table-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:GetLogEvents
+                - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                - dynamodb:CreateTable
+                - dynamodb:UpdateTable
+                - dynamodb:CreateGlobalTable
+                - dynamodb:UpdateGlobalTable
+                - dynamodb:DescribeLimits
+                - dynamodb:DescribeGlobalTable
+                - application-autoscaling:DeleteScalingPolicy
+                - application-autoscaling:DeregisterScalableTarget
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - cloudformation:ListExports
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - iam:CreateServiceLinkedRole
+                Resource: "arn:aws:iam::*:role/aws-service-role/*"
+
+  PlaylistStateTable:
+    Type: AWS::DynamoDB::Table
+    Condition: CreateDynamoDBResource
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "domain"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - 
+          AttributeName: "domain"
+          KeyType: "HASH"
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TableName: !Ref VideoStreamSetName
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: VideoStreamSetName
+          Value: !Ref VideoStreamSetName
+
+
+  DynamoDBGlobalTable:
+      Type: Custom::DynamoDBGlobalTableCreate
+      Properties:
+          ServiceToken: !GetAtt DynamoDBGlobalTableCreate.Arn
+          GlobalTableName: !If [ CreateDynamoDBResource, !Ref PlaylistStateTable, !Ref VideoStreamSetName ]
+          ReplicationGroupList: !Ref ReplicationGroupList
+
+
+Outputs:
+  DynamoDBGlobalTableCreateArn:
+    Description: 'Lambda function Arn to create DynamoDB Global Tables'
+    Value: !GetAtt DynamoDBGlobalTableCreate.Arn
+    Export:
+      Name: 'DynamoDBGlobalTableCreateArn'
+  DynamoDBGlobalTableCreateRole:
+    Description: 'Lambda function IAM Role to create DynamoDB Global Tables'
+    Value: !Ref DynamoDBGlobalTableCreateRole
+    Export:
+      Name: 'DynamoDBGlobalTableCreateRole'
+  DynamoDBGlobalTableCreateRoleArn:
+    Description: 'Lambda function IAM Role Arn to create DynamoDB Global Tables'
+    Value: !GetAtt DynamoDBGlobalTableCreateRole.Arn
+    Export:
+      Name: 'DynamoDBGlobalTableCreateRoleArn'
