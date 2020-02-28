@@ -29,11 +29,11 @@ Parameters:
     Description: Cloudfront Distribution ID we want to act on
   RegionOne: 
     Type: String
-    Default: eu-west-2
+    Default: eu-west-1
     Description: Name of the AWS region for the first playlist
   RegionTwo: 
     Type: String
-    Default: eu-west-1
+    Default: eu-west-2
     Description: Name of the AWS region for the second playlist
 
 
@@ -274,6 +274,11 @@ Outputs:
     Value: !Ref PlaylistBucket
     Export:
       Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistBucket'] ]
+  CloudfrontDistributionId:
+    Description: Cloudfront Distribution ID we want to act on
+    Value: !Ref CloudfrontDistributionId
+    Export:
+        Name: !Join [ ':', [ !Ref 'AWS::StackName', 'CloudfrontDistributionId'] ]
   OriginAccessIdentity:
     Description: 'Origin access identity for master playlist'
     Value: !Ref OriginAccessIdentity

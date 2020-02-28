@@ -6,6 +6,7 @@ import boto3
 import logging
 import json
 import copy
+import os
 
 logger = logging.getLogger(__name__)
 # Initialise the helper, all inputs are optional, this example shows the defaults
@@ -16,8 +17,9 @@ try:
     pass
 except Exception as e:
     helper.init_failure(e)
-    
-dynamodb_client = boto3.client('dynamodb')
+
+region = os.environ['AWS_REGION']
+dynamodb_resource = boto3.resource('dynamodb', region_name=region)
 cloudfront_client = boto3.client('cloudfront')
 
 
@@ -39,10 +41,10 @@ def create(event, context):
         raise ValueError("Missing property 'ClusteredVideoStreamName'")
     if "MasterPlaylistDistributionId" not in event["ResourceProperties"]:
         raise ValueError("Missing property 'MasterPlaylistDistributionId'")
-    if "DistributionIdRegionOne" not in event["ResourceProperties"]:
-        raise ValueError("Missing property 'DistributionIdRegionOne'")
-    if "DistributionIdRegionTwo" not in event["ResourceProperties"]:
-        raise ValueError("Missing property 'DistributionIdRegionTwo'")
+    if "RegionOneCloudfrontDistributionId" not in event["ResourceProperties"]:
+        raise ValueError("Missing property 'RegionOneCloudfrontDistributionId'")
+    if "RegionTwoCloudfrontDistributionId" not in event["ResourceProperties"]:
+        raise ValueError("Missing property 'RegionTwoCloudfrontDistributionId'")
     if "RegionOne" not in event["ResourceProperties"]:
         raise ValueError("Missing property 'RegionOne'")
     if "RegionTwo" not in event["ResourceProperties"]:
@@ -52,39 +54,41 @@ def create(event, context):
         # Create state table entries for each region in the clustered video stream
 
         # Region One
-        response = cloudfront_client.get_distribution(Id=event["ResourceProperties"]["DistributionIdRegionOne"])
+        response = cloudfront_client.get_distribution(Id=event["ResourceProperties"]["RegionOneCloudfrontDistributionId"])
 
-        config = response["Distribution"]  
+        config = response["Distribution"]
+        item = {}
         item["domain"] = config["DomainName"]
         item["region"] = event["ResourceProperties"]["RegionOne"]
 
-        response = dynamodb_client.put_item(item=item)
+        table = dynamodb_resource.Table(event["ResourceProperties"]["ClusteredVideoStreamName"])
+        response = table.put_item(Item=item)
         
         # Region Two
-        response = cloudfront_client.get_distribution(Id=event["ResourceProperties"]["DistributionIdRegionTwo"])
+        response = cloudfront_client.get_distribution(Id=event["ResourceProperties"]["RegionTwoCloudfrontDistributionId"])
 
         config = response["Distribution"]  
         item["domain"] = config["DomainName"]
-        item["region"] = event["ResourceProperties"]["RegionOne"]
+        item["region"] = event["ResourceProperties"]["RegionTwo"]
 
-        response = dynamodb_client.put_item(item=item)
+        response = table.put_item(Item=item)
 
         # Create a cloudfront origin group using all the origins in the master playlist
 
         new_origin_groups = {
             "Quantity": 1,
-            Items: [{
+            "Items": [{
                 "Id": event["ResourceProperties"]["ClusteredVideoStreamName"]+"-"+"OriginGroup",
                 "FailoverCriteria": {
                 "StatusCodes": {
                     "Quantity": 4,
                     "Items": [
-                    500,
-                    502,
-                    503,
-                    504
-                    ]
-                }
+                        500,
+                        502,
+                        503,
+                        504
+                        ]
+                    }
                 },
                 "Members": {
                     "Quantity": 0,
@@ -94,21 +98,23 @@ def create(event, context):
                 }]
             }
 
-        response = client.get_distribution_config(Id=event["ResourceProperties"]["MasterPlaylistDistributionId"])
+        response = cloudfront_client.get_distribution_config(Id=event["ResourceProperties"]["MasterPlaylistDistributionId"])
 
         config = copy.deepcopy(response["DistributionConfig"]) 
-        saved_config = copy.deepcopy(response["DistributionConfig"]) 
 
-        config["OriginGroups"] = new_origin_groups
+        
 
         for origin in config["Origins"]["Items"]:
             new_origin_group_member = {
                 "OriginId": origin["Id"]
             }
-            config["OriginGroups"]["Members"]["Quantity"] = config["OriginGroups"]["Members"]["Quantity"] + 1
-            config["OriginGroups"]["Members"]["Items"].append(new_origin_group_member)
+            
+            new_origin_groups["Items"][0]["Members"]["Quantity"] = new_origin_groups["Items"][0]["Members"]["Quantity"] + 1
+            new_origin_groups["Items"][0]["Members"]["Items"].append(new_origin_group_member)
 
-        response = client.update_distribution(DistributionConfig=config, Id=event["ResourceProperties"]["Id"], IfMatch=response["ETag"])
+        config["OriginGroups"] = new_origin_groups
+
+        response = cloudfront_client.update_distribution(DistributionConfig=config, Id=event["ResourceProperties"]["MasterPlaylistDistributionId"], IfMatch=response["ETag"])
     
     except Exception as e:
         raise e
@@ -127,10 +133,10 @@ def delete(event, context):
         raise ValueError("Missing property 'ClusteredVideoStreamName'")
     if "MasterPlaylistDistributionId" not in event["ResourceProperties"]:
         raise ValueError("Missing property 'MasterPlaylistDistributionId'")
-    if "DistributionIdRegionOne" not in event["ResourceProperties"]:
-        raise ValueError("Missing property 'DistributionIdRegionOne'")
-    if "DistributionIdRegionTwo" not in event["ResourceProperties"]:
-        raise ValueError("Missing property 'DistributionIdRegionTwo'")
+    if "RegionOneCloudfrontDistributionId" not in event["ResourceProperties"]:
+        raise ValueError("Missing property 'RegionOneCloudfrontDistributionId'")
+    if "RegionTwoCloudfrontDistributionId" not in event["ResourceProperties"]:
+        raise ValueError("Missing property 'RegionTwoCloudfrontDistributionId'")
     if "RegionOne" not in event["ResourceProperties"]:
         raise ValueError("Missing property 'RegionOne'")
     if "RegionTwo" not in event["ResourceProperties"]:
@@ -139,15 +145,35 @@ def delete(event, context):
     # Delete the associated the origin group from the master playlist distributionn
     try:
 
-        response = client.get_distribution_config(Id=event["ResourceProperties"]["Id"])
+        # Delete RegionOne domain
+        response = cloudfront_client.get_distribution(Id=event["ResourceProperties"]["RegionOneCloudfrontDistributionId"])
 
-        config = response["DistributionConfig"]  
-        
+        config = response["Distribution"]
+        domain = config["DomainName"]
+
+        table = dynamodb_resource.Table(event["ResourceProperties"]["ClusteredVideoStreamName"])
+
+        response = table.delete_item(Key={'domain': domain})
+
+        # Delete RegionTwo domain
+        response = cloudfront_client.get_distribution(Id=event["ResourceProperties"]["RegionTwoCloudfrontDistributionId"])
+
+        config = response["Distribution"]
+        domain = config["DomainName"]
+
+        table = dynamodb_resource.Table(event["ResourceProperties"]["ClusteredVideoStreamName"])
+
+        response = table.delete_item(Key={'domain': domain})
+
+        # Delete OriginGroup
+        response = cloudfront_client.get_distribution_config(Id=event["ResourceProperties"]["MasterPlaylistDistributionId"])
+        config = response["DistributionConfig"] 
+
         if "OriginGroups" in config:
             config["OriginGroups"]["Quantity"] = 0
             config["OriginGroups"]["Items"] = []
 
-        response = client.update_distribution(DistributionConfig=config, Id=event["ResourceProperties"]["Id"], IfMatch=response["ETag"])
+        response = cloudfront_client.update_distribution(DistributionConfig=config, Id=event["ResourceProperties"]["MasterPlaylistDistributionId"], IfMatch=response["ETag"])
         
     except Exception as e:
         raise e

@@ -25,21 +25,23 @@ Parameters:
     Type: String
     Default: true
     AllowedValues: [true, false]
-  # ReplicationGroupList:
-  #   Description: 'Comma delimited list of regions to included in the replication group (currently limited to: us-east-1,us-east-2,us-west-2,eu-west-1,eu-central-1,ap-southeast-1,ap-southeast-2,ap-northeast-1,ap-northeast-2)'
-  #   Type: CommaDelimitedList
-  #   Default: 'us-east-1,us-west-2'
+  ReplicationGroupList:
+    Type: CommaDelimitedList
+    Default: "eu-west-1,eu-west-2"
   RegionOne: 
     Type: String
-    Default: eu-west-2
+    Default: "eu-west-1"
     Description: Name of the AWS region for the first playlist
   RegionTwo: 
     Type: String
-    Default: eu-west-1
+    Default: "eu-west-2"
     Description: Name of the AWS region for the second playlist
   RegionOnePlaylistBucket:
     Type: String
     Description: Name of the bucket used to store the merged master playlist in RegionOne
+  RegionOneCloudfrontDistributionId:
+    Type: String
+    Description: Cloudfront Distribution ID in region one we want to act on
   RegionTwoPlaylistBucket:
     Type: String
     Description: Name of the bucket used to store the merged master playlist in RegionTwo
@@ -49,6 +51,9 @@ Parameters:
   RegionTwoOriginAccessIdentity:
     Type: String
     Description: Origin access identity ID for master playlist in RegionTwo
+  RegionTwoCloudfrontDistributionId:
+    Type: String
+    Description: Cloudfront Distribution ID in region two we want to act on
   LogLevel:
     Description: 'Log Level for the DynamoDB Global Table creation Custom Resource'
     Type: String
@@ -153,12 +158,13 @@ Resources:
           Value: !Ref ClusteredVideoStreamName
 
 
-  # DynamoDBGlobalTable:
-  #     Type: Custom::DynamoDBGlobalTableCreate
-  #     Properties:
-  #         ServiceToken: !GetAtt DynamoDBGlobalTableCreate.Arn
-  #         GlobalTableName: !If [ CreateDynamoDBResource, !Ref PlaylistStateTable, !Ref ClusteredVideoStreamName ]
-  #         ReplicationGroupList: !Join [",", [!Ref RegionOne, !Ref RegionTwo] ]
+  DynamoDBGlobalTable:
+      Type: Custom::DynamoDBGlobalTableCreate
+      Properties:
+          ServiceToken: !GetAtt DynamoDBGlobalTableCreate.Arn
+          GlobalTableName: !If [ CreateDynamoDBResource, !Ref PlaylistStateTable, !Ref ClusteredVideoStreamName ]
+          # ReplicationGroupList: !Join [",", [!Ref RegionOne, !Ref RegionTwo] ]
+          ReplicationGroupList: !Ref ReplicationGroupList
           
 
 
@@ -245,6 +251,8 @@ Resources:
                 Effect: Allow
               - Action:
                   - 'dynamodb:PutItem'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:UpdateItem'
                 Resource: '*'
                 Effect: Allow
 
@@ -276,17 +284,16 @@ Resources:
         - Key: ClusteredVideoStreamName
           Value: !Ref ClusteredVideoStreamName
 
-  # InitClusteredVideoStream:
-  #   Type: Custom::InitClusteredVideoStream
-  #   Properties:
-  #     ServiceToken: !GetAtt InitClusteredVideoStreamCustomResource.Arn
-  #     ClusteredVideoStreamName: !Ref ClusteredVideoStreamName
-  #     RegionOne: !Ref RegionOne
-  #     DistributionIdRegionOne: !Ref DistributionIdRegionOne
-  #     OriginAccessIdentityRegionOne: !Ref OriginAccessIdentityRegionOne
-  #     RegionTwo: !Ref RegionTwo
-  #     DistributionIdRegionTwo: !Ref DistributionIdRegionTwo
-  #     OriginAccessIdentityRegionTwo: !Ref OriginAccessIdentityRegionTwo  
+  InitClusteredVideoStream:
+    Type: Custom::InitClusteredVideoStream
+    Properties:
+      ServiceToken: !GetAtt InitClusteredVideoStreamCustomResource.Arn
+      ClusteredVideoStreamName: !Ref ClusteredVideoStreamName
+      MasterPlaylistDistributionId: !Ref MasterPlaylistCloudfrontDistribution
+      RegionOne: !Ref RegionOne
+      RegionOneCloudfrontDistributionId: !Ref RegionOneCloudfrontDistributionId
+      RegionTwo: !Ref RegionTwo
+      RegionTwoCloudfrontDistributionId: !Ref RegionTwoCloudfrontDistributionId
 
 Outputs:
   DynamoDBGlobalTableCreateArn:
