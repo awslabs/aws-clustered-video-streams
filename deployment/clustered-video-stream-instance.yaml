@@ -43,83 +43,30 @@ Parameters:
   
 Resources:
 
-  RegionOnePlaylistBucket:
+  PlaylistBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
-
-        
-  # RegionTwoPlaylistBucket:
-  #   Type: AWS::S3::Bucket
-  #   DeletionPolicy: Retain
-  # RegionTwoOriginAccessIdentity:
     
-  RegionOneOriginAccessIdentity:
+  OriginAccessIdentity:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "access-identity-${RegionOnePlaylistBucket}"
+        Comment: !Sub "access-identity-${PlaylistBucket}"
 
-  RegionOnePlaylistBucketPolicy:
+  PlaylistBucketPolicy:
     Type: "AWS::S3::BucketPolicy"
     Properties:
       Bucket:
-        Ref: "RegionOnePlaylistBucket"
+        Ref: "PlaylistBucket"
       PolicyDocument:
         Statement:
           - Effect: "Allow"
             Action:
               - "s3:*"
             Resource:
-              - !Sub '${RegionOnePlaylistBucket.Arn}/*'
+              - !Sub '${PlaylistBucket.Arn}/*'
             Principal:
-              CanonicalUser: !GetAtt RegionOneOriginAccessIdentity.S3CanonicalUserId
-
-  MasterPlaylistCloudfrontDistribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:   
-        Comment: !Sub "Master playlist for ClusteredVideoStream: ${ClusteredVideoStreamName}" 
-        Origins:
-        - Id: S3-region-one
-          DomainName: !Sub "${RegionOnePlaylistBucket}.s3.${RegionOne}.amazonaws.com"
-          S3OriginConfig:
-            OriginAccessIdentity:
-              Fn::Sub:
-                - "origin-access-identity/cloudfront/${RegionOneOriginAccessIdentity}"
-                - RegionOneOriginAccessIdentity: !Ref RegionOneOriginAccessIdentity
-       
-        # - Id: S3-region-two
-        #   DomainName: !Sub "${S3ClusteredPlayListRegionTwo}.s3.${RegionTwo}.amazonaws.com"
-        #   S3OriginConfig:
-        #     OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${RegionTwoOriginAccessIdentity}"
-        DefaultCacheBehavior: 
-          AllowedMethods: 
-            - GET
-            - HEAD
-            - OPTIONS
-          CachedMethods: 
-            - GET
-            - HEAD
-            - OPTIONS
-          ForwardedValues: 
-            QueryString: 'false'
-            Headers:
-              - Origin
-              - Access-Control-Request-Headers
-              - Access-Control-Request-Method
-          TargetOriginId: S3-region-one
-          ViewerProtocolPolicy: redirect-to-https        
-        DefaultRootObject: "index.m3u8" 
-        IPV6Enabled: 'true'
-        ViewerCertificate:
-          CloudFrontDefaultCertificate: 'true'
-        Enabled: 'true'
-        HttpVersion: 'http2'
-      Tags:
-        - Key: Stack
-          Value: !Ref 'AWS::StackName'
-        - Key: ClusteredVideoStreamName
-          Value: !Ref ClusteredVideoStreamName
+              CanonicalUser: !GetAtt OriginAccessIdentity.S3CanonicalUserId
 
   PlaylistStateTable:
     Type: AWS::DynamoDB::Table
@@ -298,10 +245,6 @@ Resources:
       Role: !GetAtt EdgeLambdaAttachCustomResourceRole.Arn
       Runtime:  python3.7
       Timeout: 10
-      Environment:
-        Variables:
-          CLOUDFRONT_DISTRIBUTION_ID: !Ref CloudfrontDistributionId
-        
       Code:
         S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
         S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"], "cfn-add-edge-lambda.zip"]] 
@@ -321,25 +264,20 @@ Resources:
       
 Outputs:
   ModuleId:
-    Value: 'stale-playlist-detector'
+    Value: 'clustered-video-stream-instance'
   ModuleVersion:
     Value: '1.0.0'
   StackName:
     Value: !Ref 'AWS::StackName'
-  MasterPlaylistOriginRegionOne:
-    Description: The path of the ClusterVideoStream playlist S3 origin in the first region
-    Value: !Join ["/", ["s3:", !Ref RegionOnePlaylistBucket, "master.m3u8"] ]
+  MasterPlaylistBucket:
+    Description: The containing the master playlist  in the first region
+    Value: !Ref PlaylistBucket
     Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistOriginRegionOne'] ]
-  MasterPlaylistOriginRegionTwo:
-    Description: The domain of the ClusterVideoStream CloudFront distribution
-    Value: !GetAtt MasterPlaylistCloudfrontDistribution.DomainName
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistBucket'] ]
+  OriginAccessIdentity:
+    Description: 'Origin access identity for master playlist'
+    Value: !Ref OriginAccessIdentity
     Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistOriginRegionTwo'] ]
-  MasterPlaylistDistributionDomain:
-    Description: The domain of the ClusterVideoStream CloudFront distribution
-    Value: !GetAtt MasterPlaylistCloudfrontDistribution.DomainName
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistDomain'] ]
-   
+        Name: !Join [ ':', [ !Ref 'AWS::StackName', 'OriginAccessIdentity'] ]
+  
   
