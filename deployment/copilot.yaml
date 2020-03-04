@@ -12,7 +12,7 @@ Parameters:
 
   ClusteredVideoStreamName: 
     Type: String
-    Default: 'eu-west-1'
+    Default: 'cvs'
     Description: Unique name to identify this collection of redundant streams
   RegionOne:
     Type: String
@@ -22,15 +22,13 @@ Parameters:
     Type: String
     Default: "eu-west-2"
     Description: Region (e.g. 'us-west-2', 'eu-west-1', ...) the second live stream is deployed in
-  StreamRegionOneCloudfrontOrigin:
+  StreamRegionOneCloudFrontDomain:
     Type: String
-    Default: "f7b399c8cf81ac81.mediapackage.eu-west-1.amazonaws.com"
-    Description: Origin (e.g. MediaPackage) endpoint domain of the video stream instance in the 
+    Description: CloudFront domain of the video stream instance in the 
       first region
-  StreamRegionTwoOriginDomain:
+  StreamRegionTwoCloudFrontDomain:
     Type: String
-    Default: "3fed4eda01633872.mediapackage.eu-west-2.amazonaws.com"
-    Description: Origin (e.g. MediaPackage) endpoint domain of the video stream instance in the 
+    Description: CloudFront domain of the video stream instance in the 
       second region
   
 #Metadata:
@@ -90,11 +88,13 @@ Resources:
         ZipFile: !Sub |
           import boto3
           
+          # These values are set in CloudFormation during deployment of the OriginLambda resource
           REGION_LOOKUP = {
-              "${StreamRegionOneCloudfrontOrigin}":"${RegionOne}",
-              "${StreamRegionTwoOriginDomain}": "${RegionTwo}"
+              "${StreamRegionOneCloudFrontDomain}":"${RegionOne}",
+              "${StreamRegionTwoCloudFrontDomain}": "${RegionTwo}"
           }
 
+          # This value is set in CloudFormation during deployment of the OriginLambda resource
           TABLE_NAME = "${ClusteredVideoStreamName}"
 
           def origin_request(event, context):

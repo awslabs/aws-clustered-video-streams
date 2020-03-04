@@ -126,6 +126,7 @@ Resources:
                 Effect: Allow
               - Action:
                   - 'dynamodb:PutItem'
+                  - 'dynamodb:UpdateItem'
                 Resource: !GetAtt
                   - PlaylistStateTable
                   - Arn
@@ -138,13 +139,13 @@ Resources:
             Effect: Allow
             Principal:
               Service:
-                - lambda.amazonaws.com
-
+                - lambda.amazonaws.com 
+      
   PlaylistAlertHandler:
     Type: AWS::Lambda::Function
     Properties:
       Description: Handle a stale playlist alert by updating the state of the stream in the state table
-      Handler: handler
+      Handler: index.handler
       MemorySize: 2048
       Role: !GetAtt PlaylistAlertHandlerRole.Arn
       Runtime: python3.7 
@@ -156,14 +157,15 @@ Resources:
         ZipFile: |
           import json
           import boto3
+          import os
           from urllib.parse import urlparse
 
-          tablename = os.environ('PlaylistStateTable')
+          tablename = os.environ['PlaylistStateTable']
 
           dynamodb = boto3.resource('dynamodb')
           table = dynamodb.Table(tablename)
           def handler(event, context):
-              console.log(event)
+              print(json.dumps(event))
               records = event["Records"]
               for record in records:
                   try:
@@ -177,9 +179,9 @@ Resources:
                           ExpressionAttributeValues={
                               ':pf': playlist_fresh
                           })
-                      console.log(response)
+                      print(json.dumps(response))
                   except Exception as exception:
-                      console.log(exception)
+                      print(exception)
               return True
       
   EdgeLambdaAttachCustomResourceRole:

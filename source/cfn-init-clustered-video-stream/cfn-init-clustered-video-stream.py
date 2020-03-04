@@ -60,6 +60,7 @@ def create(event, context):
         item = {}
         item["domain"] = config["DomainName"]
         item["region"] = event["ResourceProperties"]["RegionOne"]
+        item["distro_open"] = True
 
         table = dynamodb_resource.Table(event["ResourceProperties"]["ClusteredVideoStreamName"])
         response = table.put_item(Item=item)
@@ -70,6 +71,7 @@ def create(event, context):
         config = response["Distribution"]  
         item["domain"] = config["DomainName"]
         item["region"] = event["ResourceProperties"]["RegionTwo"]
+        item["distro_open"] = True
 
         response = table.put_item(Item=item)
 

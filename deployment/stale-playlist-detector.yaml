@@ -38,7 +38,6 @@ Mappings:
 Parameters:
   ServiceName:
     Type: String
-    Default: spd
     Description: A name for the service
   ImageUrl:
     Type: String
@@ -60,7 +59,6 @@ Parameters:
     Description: Which subnet to deploy the task container in
   SPDName:
     Type: String
-    Default: Stale Playlist Detector
     Description: Any string to identify this instance of the SPD for humans
   DistributionPlaylistUrl:
     Type: String
@@ -374,33 +372,27 @@ Resources:
         Id: Id1
         Version: '2012-10-17'
         Statement:
-        - Sid: Sid1
+        - Sid: AccountTopicPolicy
           Effect: Allow
           Principal:
-            Service:
-            - 'events.amazonaws.com' # Allow CloudWatch Events
-          Action: 'sns:Publish'
-          Resource: !Ref Topic
-        - Sid: Sid2
-          Effect: Allow
-          Principal:
-            AWS: '*' # Allow CloudWatch Alarms, ElastiCache Notifications, Elastic Beanstalk Notifications, Auto Scaling Notification
-          Action: 'sns:Publish'
-          Resource: !Ref Topic
-          Condition:
-            StringEquals:
-              'AWS:SourceOwner': !Ref 'AWS::AccountId'
-        - Sid: Sid3
-          Effect: Allow
-          Principal:
-            Service: 'ses.amazonaws.com' # Allow SES Notifications & Events
-          Action: 'sns:Publish'
+            AWS: "*"
+          Action:
+          - SNS:GetTopicAttributes
+          - SNS:SetTopicAttributes
+          - SNS:AddPermission
+          - SNS:RemovePermission
+          - SNS:DeleteTopic
+          - SNS:Subscribe
+          - SNS:ListSubscriptionsByTopic
+          - SNS:Publish
+          - SNS:Receive
           Resource: !Ref Topic
           Condition:
             StringEquals:
-              'AWS:Referer': !Ref 'AWS::AccountId'
+              AWS:SourceOwner: !Ref 'AWS::AccountId'
       Topics:
-      - !Ref Topic
+        - !Ref Topic
+
   Queue:
     Type: AWS::SQS::Queue
 
@@ -453,6 +445,8 @@ Resources:
           Environment:
             - Name: SPD_CDN_URL
               Value: !Ref DistributionPlaylistUrl
+            - Name: SPD_REGION
+              Value: !Ref AWS::Region
             - Name: SPD_ORIGIN_URL
               Value: !Ref OriginPlaylistUrl
             - Name: SPD_SNS_TOPIC
@@ -516,46 +510,6 @@ Outputs:
     Value: !Ref 'ECSCluster'
     Export:
       Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ClusterName' ] ]
-  ECSRole:
-    Description: The ARN of the ECS role
-    Value: !GetAtt 'ECSRole.Arn'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ECSRole' ] ]
-  ECSTaskExecutionRole:
-    Description: The ARN of the ECS role
-    Value: !GetAtt 'ECSTaskExecutionRole.Arn'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ECSTaskExecutionRole' ] ]
-  VPCId:
-    Description: The ID of the VPC that this stack is deployed in
-    Value: !Ref 'VPC'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'VPCId' ] ]
-  PublicSubnetOne:
-    Description: Public subnet one
-    Value: !Ref 'PublicSubnetOne'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PublicSubnetOne' ] ]
-  PublicSubnetTwo:
-    Description: Public subnet two
-    Value: !Ref 'PublicSubnetTwo'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PublicSubnetTwo' ] ]
-  PrivateSubnetOne:
-    Description: Private subnet one
-    Value: !Ref 'PrivateSubnetOne'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PrivateSubnetOne' ] ]
-  PrivateSubnetTwo:
-    Description: Private subnet two
-    Value: !Ref 'PrivateSubnetTwo'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'PrivateSubnetTwo' ] ]
-  FargateContainerSecurityGroup:
-    Description: A security group used to allow Fargate containers to receive traffic
-    Value: !Ref 'FargateContainerSecurityGroup'
-    Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'FargateContainerSecurityGroup' ] ]
   TopicArn:
     Value: !Ref Topic
     Export:
