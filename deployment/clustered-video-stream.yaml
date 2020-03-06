@@ -1,0 +1,327 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "DynamoDB Global Table Lambda Utility"
+
+# Organizes How the Parameters appear in the CloudFormation Interface
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Lambda Utility Parameters'
+      Paramete rs:
+      - ClusteredVideoStreamName
+      - DynamoDBTableExists
+      - LogLevel
+
+Parameters:
+  ClusteredVideoStreamName:
+    Description: 'Name to use when creating the DynamoDB table'
+    Type: String
+    Default: 'ClusteredVideoStream'
+    AllowedPattern: '[a-zA-Z0-9_.-]+'
+    MaxLength: 255
+    MinLength: 3
+  DynamoDBTableExists:
+    Description: 'The DynamoDB table already exists, and cannot be created as a resource. (Must match the name in the previous parameter)'
+    Type: String
+    Default: true
+    AllowedValues: [true, false]
+  ReplicationGroupList:
+    Type: CommaDelimitedList
+    Default: "eu-west-1,eu-west-2"
+  RegionOne: 
+    Type: String
+    Default: "eu-west-1"
+    Description: Name of the AWS region for the first playlist
+  RegionTwo: 
+    Type: String
+    Default: "eu-west-2"
+    Description: Name of the AWS region for the second playlist
+  RegionOneMasterPlaylistBucket:
+    Type: String
+    Description: Name of the bucket used to store the merged master playlist in RegionOne
+  RegionOneCloudfrontDistributionId:
+    Type: String
+    Description: Cloudfront Distribution ID in region one we want to act on
+  RegionTwoMasterPlaylistBucket:
+    Type: String
+    Description: Name of the bucket used to store the merged master playlist in RegionTwo
+  RegionOneOriginAccessIdentity:
+    Type: String
+    Description: Origin access identity ID for master playlist in RegionOne
+  RegionTwoOriginAccessIdentity:
+    Type: String
+    Description: Origin access identity ID for master playlist in RegionTwo
+  RegionTwoCloudfrontDistributionId:
+    Type: String
+    Description: Cloudfront Distribution ID in region two we want to act on
+  LogLevel:
+    Description: 'Log Level for the DynamoDB Global Table creation Custom Resource'
+    Type: String
+    Default: 'WARNING'
+    AllowedValues: [ 'DEBUG', 'INFO', 'WARNING', 'ERROR' ]
+
+Conditions:
+  CreateDynamoDBResource: !Equals [ !Ref DynamoDBTableExists, 'false' ]
+
+Mappings:
+  SourceCode:
+    General:
+      S3Bucket: "%%BUCKET_NAME%%"
+      KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
+
+Resources:
+  DynamoDBGlobalTableCreate:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: cfn-global-table.handler
+      Description:  'Check for existence of a DynamoDB Global Table in provided Regions, create it if it does not exist'
+      Role: !GetAtt DynamoDBGlobalTableCreateRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Runtime: python2.7
+      Environment:
+        Variables:
+          LoggingLevel: !Ref LogLevel
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"], "cfn-global-table.zip"]] 
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+
+  DynamoDBGlobalTableCreateRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+               - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: 'lambda-dynamodb-global-table-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:GetLogEvents
+                - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                - dynamodb:CreateTable
+                - dynamodb:UpdateTable
+                - dynamodb:CreateGlobalTable
+                - dynamodb:UpdateGlobalTable
+                - dynamodb:DescribeLimits
+                - dynamodb:DescribeGlobalTable
+                - application-autoscaling:DeleteScalingPolicy
+                - application-autoscaling:DeregisterScalableTarget
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - cloudformation:ListExports
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                - iam:CreateServiceLinkedRole
+                Resource: "arn:aws:iam::*:role/aws-service-role/*"
+
+  PlaylistStateTable:
+    Type: AWS::DynamoDB::Table
+    Condition: CreateDynamoDBResource
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "domain"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - 
+          AttributeName: "domain"
+          KeyType: "HASH"
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TableName: !Ref ClusteredVideoStreamName
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+
+  DynamoDBGlobalTable:
+      Type: Custom::DynamoDBGlobalTableCreate
+      Properties:
+          ServiceToken: !GetAtt DynamoDBGlobalTableCreate.Arn
+          GlobalTableName: !If [ CreateDynamoDBResource, !Ref PlaylistStateTable, !Ref ClusteredVideoStreamName ]
+          # ReplicationGroupList: !Join [",", [!Ref RegionOne, !Ref RegionTwo] ]
+          ReplicationGroupList: !Ref ReplicationGroupList
+
+  MasterPlaylistCloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:   
+        Comment: !Sub "Master playlist for ClusteredVideoStream: ${ClusteredVideoStreamName}" 
+        Origins:
+        - Id: !Join ["-", [!Ref "AWS::StackName", "S3-region-one"] ]
+          DomainName: !Sub "${RegionOneMasterPlaylistBucket}.s3.${RegionOne}.amazonaws.com"
+          S3OriginConfig:
+            OriginAccessIdentity:
+              Fn::Sub:
+                - "origin-access-identity/cloudfront/${RegionOneOriginAccessIdentity}"
+                - RegionOneOriginAccessIdentity: !Ref RegionOneOriginAccessIdentity
+        - Id: !Join ["-", [!Ref "AWS::StackName", "S3-region-two"] ]
+          DomainName: !Sub "${RegionTwoMasterPlaylistBucket}.s3.${RegionTwo}.amazonaws.com"
+          S3OriginConfig:
+            OriginAccessIdentity:
+              Fn::Sub:
+                - "origin-access-identity/cloudfront/${RegionTwoOriginAccessIdentity}"
+                - RegionTwoOriginAccessIdentity: !Ref RegionTwoOriginAccessIdentity
+        DefaultCacheBehavior: 
+          AllowedMethods: 
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods: 
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues: 
+            QueryString: 'false'
+            Headers:
+              - Origin
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+          TargetOriginId: !Join ["-", [!Ref "AWS::StackName", "S3-region-one"] ]
+          ViewerProtocolPolicy: redirect-to-https        
+        DefaultRootObject: "master.m3u8" 
+        IPV6Enabled: 'true'
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: 'true'
+        Enabled: 'true'
+        HttpVersion: 'http2'
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+
+  InitClusteredVideoStreamCustomResourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - 'arn:aws:logs:*:*:*'
+                Effect: Allow
+              - Action:
+                  - "acm:ListCertificates" 
+                  - "cloudfront:CreateDistribution"
+                  - "cloudfront:DeleteDistribution"
+                  - "cloudfront:GetDistribution"
+                  - "cloudfront:GetDistributionConfig"
+                  - "cloudfront:ListDistributions"
+                  - "cloudfront:UpdateDistribution"
+                  - "cloudfront:ListCloudFrontOriginAccessIdentities"
+                  - "elasticloadbalancing:DescribeLoadBalancers"
+                  - "iam:ListServerCertificates"
+                  - "sns:ListSubscriptionsByTopic"
+                  - "sns:ListTopics"
+                  - "waf:GetWebACL"
+                  - "waf:ListWebACLs"
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:UpdateItem'
+                Resource: '*'
+                Effect: Allow
+
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com                            
+
+  InitClusteredVideoStreamCustomResource:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Initialize the state table and master playlist for a clustered video stream
+      Handler: cfn-init-clustered-video-stream.handler
+      MemorySize: 128
+      Role: !GetAtt InitClusteredVideoStreamCustomResourceRole.Arn
+      Runtime:  python3.7
+      Timeout: 10
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"], "cfn-init-clustered-video-stream.zip"]] 
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+
+  InitClusteredVideoStream:
+    Type: Custom::InitClusteredVideoStream
+    Properties:
+      ServiceToken: !GetAtt InitClusteredVideoStreamCustomResource.Arn
+      ClusteredVideoStreamName: !Ref ClusteredVideoStreamName
+      MasterPlaylistDistributionId: !Ref MasterPlaylistCloudfrontDistribution
+      RegionOne: !Ref RegionOne
+      RegionOneCloudfrontDistributionId: !Ref RegionOneCloudfrontDistributionId
+      RegionTwo: !Ref RegionTwo
+      RegionTwoCloudfrontDistributionId: !Ref RegionTwoCloudfrontDistributionId
+
+Outputs:
+  ModuleId:
+    Value: 'clustered-video-stream'
+  ModuleVersion:
+    Value: '1.0.0'
+  StackName:
+    Value: !Ref 'AWS::StackName'
+  DynamoDBGlobalTableCreateArn:
+    Description: 'Lambda function Arn to create DynamoDB Global Tables'
+    Value: !GetAtt DynamoDBGlobalTableCreate.Arn
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'DynamoDBGlobalTableCreateArn'] ]
+  DynamoDBGlobalTableCreateRole:
+    Description: 'Lambda function IAM Role to create DynamoDB Global Tables'
+    Value: !Ref DynamoDBGlobalTableCreateRole
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'DynamoDBGlobalTableCreateRole'] ]
+  DynamoDBGlobalTableCreateRoleArn:
+    Description: 'Lambda function IAM Role Arn to create DynamoDB Global Tables'
+    Value: !GetAtt DynamoDBGlobalTableCreateRole.Arn
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'DynamoDBGlobalTableCreateRoleArn'] ]
+  MasterPlaylistCloudfrontDistribution:
+    Description: 'CloudFront Distribution that contains the merged master playlist for all of the stream instances'
+    Value: !Ref MasterPlaylistCloudfrontDistribution
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistCloudfrontDistribution'] ]
+  MasterPlaylistCloudfrontDomain:
+    Description: 'Domain of CloudFront Distribution that contains the merged master playlist for all of the stream instances'
+    Value: !GetAtt MasterPlaylistCloudfrontDistribution.DomainName
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistCloudfrontDomain'] ]
+ 

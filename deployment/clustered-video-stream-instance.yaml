@@ -1,0 +1,290 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A "Clustered Video Stream" is a set of redundant HLS video stream instances that are 
+    deployed one stream per region.  The HTTP(S) reponse of each video stream instance is controlled 
+    by an edge lambda function, called the "copilot", that is attached to its cloudfront distribution. 
+    
+    This stack deploys the copilot component in a single instance of the Clustered Video Stream.  
+
+Mappings:
+  SourceCode:
+    General:
+      S3Bucket: "%%BUCKET_NAME%%"
+      KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
+  
+Parameters:
+  ClusteredVideoStreamName:
+    Type: String 
+    Description: Name of the clustered video stream
+  PlaylistAlertTopicARN:
+    Type: String 
+    Description: ARN of SNS Topic where  playlist alerts are published.
+  CopilotLambdaArn:
+    Type: String
+    Description: Versioned ARN of copilot lambda to deploy to video stream edge
+  CopilotLambdaVersion:
+    Type: Number
+    Description: Version number of copilot lambda to deploy to video stream edge
+  CloudfrontDistributionId:
+    Type: String
+    Description: Cloudfront Distribution ID we want to act on
+  RegionOne: 
+    Type: String
+    Default: eu-west-1
+    Description: Name of the AWS region for the first playlist
+  RegionTwo: 
+    Type: String
+    Default: eu-west-2
+    Description: Name of the AWS region for the second playlist
+
+
+#Metadata:
+  
+#Conditions:
+  
+Resources:
+
+  PlaylistBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    
+  OriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "access-identity-${PlaylistBucket}"
+
+  PlaylistBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket:
+        Ref: "PlaylistBucket"
+      PolicyDocument:
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "s3:*"
+            Resource:
+              - !Sub '${PlaylistBucket.Arn}/*'
+            Principal:
+              CanonicalUser: !GetAtt OriginAccessIdentity.S3CanonicalUserId
+
+  PlaylistStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "domain"
+          AttributeType: "S"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - 
+          AttributeName: "domain"
+          KeyType: "HASH"
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TableName: !Ref ClusteredVideoStreamName
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+
+  PlaylistAlertTrigger:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref PlaylistAlertTopicARN
+      Protocol: lambda
+      Endpoint: !GetAtt PlaylistAlertHandler.Arn
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref PlaylistAlertHandler
+      Principal: sns.amazonaws.com 
+      SourceArn: !Ref PlaylistAlertTopicARN
+
+  PlaylistAlertHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - 'arn:aws:logs:*:*:*'
+                Effect: Allow
+              - Action:
+                  - 'sns:Subscribe'
+                  - 'sns:Receive'
+                  - 'sns:Unsubscribe'
+                Resource: !Ref PlaylistAlertTopicARN
+                Effect: Allow
+              - Action:
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:UpdateItem'
+                Resource: !GetAtt
+                  - PlaylistStateTable
+                  - Arn
+                Effect: Allow
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com 
+      
+  PlaylistAlertHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Handle a stale playlist alert by updating the state of the stream in the state table
+      Handler: index.handler
+      MemorySize: 2048
+      Role: !GetAtt PlaylistAlertHandlerRole.Arn
+      Runtime: python3.7 
+      Timeout: 10
+      Environment:
+        Variables:
+          PlaylistStateTable: !Ref PlaylistStateTable 
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from urllib.parse import urlparse
+
+          tablename = os.environ['PlaylistStateTable']
+
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table(tablename)
+          def handler(event, context):
+              print(json.dumps(event))
+              records = event["Records"]
+              for record in records:
+                  try:
+                      item = json.loads(record["Sns"]["Message"])
+                      parsed = urlparse(item["options"]["cdn_url"])
+                      domain = parsed.netloc
+                      playlist_fresh = (item["detector"]["state"] == 'fresh')
+                      response = table.update_item(
+                          Key={"domain": domain},
+                          UpdateExpression="set playlist_fresh = :pf",
+                          ExpressionAttributeValues={
+                              ':pf': playlist_fresh
+                          })
+                      print(json.dumps(response))
+                  except Exception as exception:
+                      print(exception)
+              return True
+      
+  EdgeLambdaAttachCustomResourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - 'arn:aws:logs:*:*:*'
+                Effect: Allow
+              - Action:
+                  - "acm:ListCertificates" 
+                  - "cloudfront:CreateDistribution"
+                  - "cloudfront:DeleteDistribution"
+                  - "cloudfront:GetDistribution"
+                  - "cloudfront:GetDistributionConfig"
+                  - "cloudfront:ListDistributions"
+                  - "cloudfront:UpdateDistribution"
+                  - "cloudfront:ListCloudFrontOriginAccessIdentities"
+                  - "elasticloadbalancing:DescribeLoadBalancers"
+                  - "iam:ListServerCertificates"
+                  - "sns:ListSubscriptionsByTopic"
+                  - "sns:ListTopics"
+                  - "waf:GetWebACL"
+                  - "waf:ListWebACLs"
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - 'dynamodb:PutItem'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - "lambda:GetFunction"
+                  - "lambda:EnableReplication"
+                Resource: 
+                   - !Join [":", [!Ref CopilotLambdaArn, !Ref CopilotLambdaVersion]]
+                   - !Ref CopilotLambdaArn
+                Effect: Allow
+
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com                            
+
+  EdgeLambdaAttachCustomResource:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Install an edge lambda for the input Cloudfront Distribution
+      Handler: cfn-add-edge-lambda.handler
+      MemorySize: 128
+      Role: !GetAtt EdgeLambdaAttachCustomResourceRole.Arn
+      Runtime:  python3.7
+      Timeout: 10
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"], "cfn-add-edge-lambda.zip"]] 
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+  
+  CloudfrontEdgeLambdaConfig:
+    Type: Custom::CloudfrontEdgeLambda
+    Properties:
+      ServiceToken: !GetAtt EdgeLambdaAttachCustomResource.Arn
+      Id: !Ref CloudfrontDistributionId
+      LambdaFunctionARN: !Join [":", [!Ref CopilotLambdaArn, !Ref CopilotLambdaVersion]]
+      EventType: "origin-request"
+      
+Outputs:
+  ModuleId:
+    Value: 'clustered-video-stream-instance'
+  ModuleVersion:
+    Value: '1.0.0'
+  StackName:
+    Value: !Ref 'AWS::StackName'
+  MasterPlaylistBucket:
+    Description: The containing the master playlist  in the first region
+    Value: !Ref PlaylistBucket
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistBucket'] ]
+  CloudfrontDistributionId:
+    Description: Cloudfront Distribution ID we want to act on
+    Value: !Ref CloudfrontDistributionId
+    Export:
+        Name: !Join [ ':', [ !Ref 'AWS::StackName', 'CloudfrontDistributionId'] ]
+  OriginAccessIdentity:
+    Description: 'Origin access identity for master playlist'
+    Value: !Ref OriginAccessIdentity
+    Export:
+        Name: !Join [ ':', [ !Ref 'AWS::StackName', 'OriginAccessIdentity'] ]
+  
+  

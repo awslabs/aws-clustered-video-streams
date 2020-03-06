@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a lambda function to be deployed at video stream edge locations. The lambda
+  function checks the state of the stream in that region and changes the HTTP response to 404
+  if a stream health check has failed.  The 404 will force the player to find other reditions 
+  of the stream, if available. 
+
+  This stack should only be deployed in us-east-1
+
+#Mappings:
+  
+Parameters:
+
+  ClusteredVideoStreamName: 
+    Type: String
+    Default: 'cvs'
+    Description: Unique name to identify this collection of redundant streams
+  RegionOne:
+    Type: String
+    Default: "eu-west-1"
+    Description: Region (e.g. 'us-west-2', 'eu-west-1', ...) the first live stream is deployed in
+  RegionTwo:
+    Type: String
+    Default: "eu-west-2"
+    Description: Region (e.g. 'us-west-2', 'eu-west-1', ...) the second live stream is deployed in
+  RegionOneDistributionDomain:
+    Type: String
+    Description: CloudFront domain of the video stream instance in the 
+      first region
+  StreamRegionTwoCloudFrontDomain:
+    Type: String
+    Description: CloudFront domain of the video stream instance in the 
+      second region
+  
+#Metadata:
+  
+# Conditions:
+#    IsUSEast1: !Equals [!Ref "AWS::REGION", 'us-east-1']
+  
+Resources:
+
+  
+  #LambdaInvokePermission:
+    
+  OriginLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - 'arn:aws:logs:*:*:*'
+                Effect: Allow
+              - Action:
+                  - 'dynamodb:GetItem'
+                Resource: !Join ['/', ['arn:aws:dynamodb:*:*:table', !Ref ClusteredVideoStreamName]]
+                Effect: Allow
+              
+               
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+
+    
+
+  OriginLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Handle a stale playlist alert by updating the state of the stream in the state table
+      Handler: index.origin_request
+      MemorySize: 2048
+      Role: !GetAtt OriginLambdaRole.Arn
+      Runtime: python3.7 
+      Timeout: 10
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          
+          # These values are set in CloudFormation during deployment of the OriginLambda resource
+          REGION_LOOKUP = {
+              "${RegionOneDistributionDomain}":"${RegionOne}",
+              "${StreamRegionTwoCloudFrontDomain}": "${RegionTwo}"
+          }
+
+          # This value is set in CloudFormation during deployment of the OriginLambda resource
+          TABLE_NAME = "${ClusteredVideoStreamName}"
+
+          def origin_request(event, context):
+            """
+            This function is the L@E entry point for origin requests
+            """
+
+            request = event['Records'][0]['cf']['request']
+            response = {"headers": {}}
+            # get the domain name for this distribution
+            domain = event['Records'][0]['cf']['config']['distributionDomainName']
+            try:
+                # access the dynamodb table, use the region for the domain
+                dynamodb = boto3.resource(
+                    'dynamodb', region_name=REGION_LOOKUP[domain])
+                table = dynamodb.Table(TABLE_NAME)
+                # look up the state of this domain
+                response = table.get_item(Key={"domain": domain},
+                                          ProjectionExpression="distro_open")
+                distro_open = response["Item"]["distro_open"]
+                # if open == false return a 404 for all requests
+                if not distro_open:
+                    response['status'] = 404
+                    return response
+            except:
+                pass
+
+            return request
+          
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+  
+  OriginLambdaVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      Description: Create a version of the origin lambda
+      FunctionName: !Ref OriginLambda
+      
+Outputs:
+  ModuleId:
+    Value: 'copilot'
+  ModuleVersion:
+    Value: '1.0.0'
+  StackName:
+    Value: !Ref 'AWS::StackName'
+  CopilotLambdaARN:
+    Description: The ARN of the copilot lambda deployed in us-east-1
+    Value: !GetAtt OriginLambda.Arn
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'CopilotLambdaARN' ] ]
+  CopilotLambdaVersion:
+    Description: The version of the copilot lambda deployed in us-east-1
+    Value: !GetAtt OriginLambdaVersion.Version
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'CopilotLambdaVersion' ] ]
+  

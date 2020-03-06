@@ -1,0 +1,6 @@
+crhelper==2.0.5
+# pyOpenSSL==19.1.0
+# brotli==1.0.7
+# cryptography==2.8
+# protobuf==3.11.3
+# simplejson==3.17.0

@@ -1,136 +1,167 @@
-# Stale Playlist Detector (SPD)
+# Deployment 
 
-## Installing and Running
+## Terminology
 
-The Stale Playlist Detector (SPD) can be run as a standalone application on a workstation, physical or virtual server, or as a Docker container.
+**stream-regions**: regions where redundant video streams are running
 
-### General Prerequesites
+## Prerequisites
 
-The Stale Playlist Detector (SPD) code has been tested extensively with [Node.js LTS](https://nodejs.org/en/about/releases/).
+1. Decide which AWS regions you want to use to host your clustered video stream in.  The architecture currently supports a two region deploy.  
+2. Follow the instructions in the [Developing](https://quip-amazon.com/vSwOA2vuRTaU#ATC9CAssfFe) section to build and host the project in your AWS account.
+3. Deploy your live streams to RegionOne and RegionTwo as you normally do.  The streams must have a separate CloudFront distribution for each region.  You can use the [Live Streaming on AWS](https://aws.amazon.com/solutions/live-streaming-on-aws/) solution as a starting point for setting up the live streams.  Simply deploy an instance of that solution in each of your chosen regions.
+4. Gather values for the following properties of these base live streams to be used in deploying the rest of the stack:
+    * *RegionOne* - the first region you want to deploy stream instances to
+    * *RegionTwo* - the second region you want to deploy stream instances to
+    * For each region:
+        * *CloudFrontDistributionId* - Id of the distribution in that region
+        * *DistributionDomain* - domain name of the CloudFront Distribution in that region
+        * *DistributionPlaylistUrl *- The url, using the DistributionDomain, of the top-level playlist for the stream in this region.
+        * *OriginPlaylistUrl* - The url, using the OriginDomain, of the top-level playlist for the stream in this region.  If you are using MediaPackage as an origin, you can find this url in the MediaPackage console 
 
-The following npm packages are required by the tool:
+**Result**
 
-* [aws-sdk](https://www.npmjs.com/package/aws-sdk)
-* [jstat](https://www.npmjs.com/package/jstat)
-* [lodash](https://www.npmjs.com/package/lodash)
-* [m3u8-parser](https://www.npmjs.com/package/m3u8-parser)
-* [machina](https://www.npmjs.com/package/machina)
-* [winston](https://www.npmjs.com/package/winston)
+* ![Image: image](images/cvs-deploy-prereq.png)
 
-### Runtime Configuration Settings
+## Deploy the Stale Playlist Detector stack
 
-The Stale Playlist Detector (SPD) uses environment variables for configuration. This allows the most flexibility when using it standalone, in a virtual machine, or in a Docker container.
+Use CloudFormation to deploy the stale playlist detector in each stream-region using the information below.
 
-#### Required Environment Variables
+**Template:** stale-playlist-detector.template
+**Run in regions:** RegionOne AND RegionTwo
+**Required Inputs:**
 
-* SPD\_ORIGIN\_URL = origin endpoint (http or https)
+* *DistributionDomain* 
+* *DistributionPlaylistUrl*
+* *OriginPlaylistUrl* 
 
-#### Optional Environment Variables
+**Outputs used later in deployments**
 
-* SPD\_CDN\_URL = CDN endpoint (http or https)
-* SPD\_DURATION\_MULTIPLIER = segment duration * multipler = maximum time allowed between playlist changes (default: 1.5)
-* SPD\_NAME = anything to identify this instance of the SPD for humans (default: Stale Playlist Detector)
-* SPD\_REGION = desired AWS region string (default: us-west-2)
-* SPD\_SQS\_URL = queue endpoint (https)
-* SPD\_SNS\_TOPIC = topic arn (AWS ARN)
-* SPD\_STALE\_TOLERANCE = fraction of playlists that must be stale to notify (default: 0.95)
-* SPD\_CHANGE\_DETECT = MEDIASEQUENCE or CONTENTHASH (method to determine when playlist changes, default: MEDIASEQUENCE)
- 
-Setting SPD\_SQS\_URL or SPD\_SNS\_TOPIC variables also require access to a role or credentials by the AWS SDK that grants permissions to these services for use.
+* *TopicArn* - the ARN of the SNS topic stale playlist metrics are written to
 
-#### Environment Variables Related to the AWS SDK
+**Result**
 
-* AWS\_ACCESS\_KEY\_ID
-* AWS\_SECRET\_ACCESS\_KEY
-* AWS\_SESSION\_TOKEN
-* AWS\_DEFAULT\_REGION
-* AWS\_DEFAULT\_OUTPUT
-* AWS\_DEFAULT\_PROFILE
-* AWS\_CA\_BUNDLE
-* AWS\_SHARED\_CREDENTIALS\_FILE
-* AWS\_CONFIG\_FILE
-
-[Details on docs.aws.amazon.com](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
-
-#### General Permissions and Networking
-
-If you only want to monitor and capture logs from the SPD while it runs, and search or filter those logs to determine when action is needed, then no other permissions are required to run the detector. The detector's network traffic is concentrated on reading small text files (playlists) at a high rate. The detector must be able to make connections from the host or container to the origin endpoint. Make sure the host allows outgoing connections over HTTP or HTTPS to the endpoint so that the SPD can monitor the playlists.
+* ![Image: spd-healthcheck-deploy.png](images/spd-healthcheck-deploy.png)
 
 
-#### AWS Permissions for SNS and SQS
+## Deploy the copilot lambda in us-east-1
 
-The Stale Playlist Detector requires permissions that allow it to publish messages to the provided SNS topic or send messages to the provided SQS queue. The recommended way to grant permissions to an EC2 or container is through an IAM Role assigned to the resource when it starts. EC2 and ECS have inputs to specify an IAM Role. If you are running the program elsewhere and want to use SNS or SQS, you will need to provide access keys through environment variables for the SPD to use when notifying when a playlist changes state.
+Lambda@Edge functions must be defined in us-east-1 before they can be attached to edge locations.
 
-Here is an example role for the SPD to publish SNS topic notifications to a specific queue.
+**Template:** copilot.template
+**Run in regions:** us-east-1
+**Required Inputs:**
+
+* *ClusteredVideoStreamName* - the unique name across AWS for this clustered video stream.
+* *RegionOne*
+* *RegionOneDistributionDomain*
+* *RegionTwo*
+* *RegionTwoDistributionDomain*
+
+**Outputs used later in deployments**
+
+* *CopilotLambdaArn* - the ARN of the copilot lambda
+* *CopilotLambdaVersion* - the Version of this copilot lambda
+
+## Deploy the clustered-video-stream-instance stack
+
+**Template:** clustered-video-stream-instance.template
+**Run in regions:** RegionOne **AND** RegionTwo
+**Required Inputs:**
+
+* *ClusteredVideoStreamName* 
+* *RegionOne*
+* *RegionTwo*
+* *CloudfrontDistributionId* - The CloudfronDistributionId from the deployment region
+
+**Outputs used later in deployments**
+
+* *MasterPlaylistBucket* - the name of the master playlist bucket deployed in this region.  
+* *OriginAccessIdentity* - Origin access identity created to access the MasterPlaylistBucket from CloudFront.
+
+**Result**
+
+* ![Image: clustered-video-stream-instance-deploy.png](images/clustered-video-stream-instance-deploy.png)
+
+
+## Deploy the clustered-video-stream stack
+
+**Template:** clustered-video-stream.template
+**Run in regions:** Any one region - RegionOne **OR** RegionTwo
+**Required Inputs:**
+
+* *ClusteredVideoStreamName*
+* *RegionOne*
+* *RegionOneCloudfrontDistributionId*
+* *RegionOneOriginAccessIdentity*
+* *RegionOneMasterPlaylistBucket*
+* *RegionTwo*
+* *RegionOneCloudfrontDistributionId*
+* *RegionOneOriginAccessIdentity*
+* *RegionOneMasterPlaylistBucket*
+
+**Output **
+
+* *MasterPlaylistCloudFrontDomain* - the domain name used to access the master playlist.  This is the domain we will use to distribute the clustered video stream to viewers.
+
+**Result**
+
+* ![Image: clustered-video-stream-deploy.png](images/clustered-video-stream-deploy.png)
+
+## Create the merged master playlist  
+
+1.  **Instructions coming soon!**
+
+# Testing the deployment
+
+### Testing failover
+
+1. Setup a video player to playback using the master playlist.   
+2. Use your browser developer tools to observe the domains being used to pull variant playlists and segments from the regional streams.
+3. In the dynamodb state table in any region:
+    1.   Set the distro_open attribute to false for the distribution domain matching the segments being consumed by the player.
+4. The player will get errors for all requests on the closed domain and should start requesting segments from another available domain.  The video should continue to play without any noticable interruption.
+
+
+## Developing
+
+### Build docker container image for the stale playlist detector
+
+Optional: see [INSTALL-stale-playlist-detector.md](./INSTALL-stale-playlist-detector.md)
+
+### Build deployment packages
+
+The build steps below use the following variables:
+
+*region* - the name of the AWS region of a deployment package
+*project* - project name you want to use for this package
+*version* - version name you want to use for this pacakge
+*bucket-base-name* - base bucket name for hosting regional deployment packages
+
+**Create S3 buckets for hosting lambdas**
+
+You must have a bucket for hosting lambda packages and web page assets in each AWS region that you want to deploy to.  The bucket names should be of the following format: <*base-bucket-name>*-<*region-name>*.  For example, if my base-bucket-name is “elementalrodeo99” and I want to deploy in eu-west-1 and eu-west-2, I would create the followin S3 buckets:
+
+elementalrodeo99-eu-west-1
+elementalrodeo99-eu-west-2
+
+**Build the deployment packages**
+
+The build script will create regional and global S3 assets required to deploy a clustered video stream on AWS.  
 
 ```
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Action": [
-                "sns:publish"
-            ],
-            "Effect": "Allow",
-            "Resource": "arn:aws:sns:us-west-4:123456789012:StalePlaylistDetectorNotify-SGZKQG"
-        }
-    ]
-}
+cd deployment
+./build-s3-dist.sh <base-bucket-name> <project> <version>
 ```
 
-### Running on a Workstation or Server
+**Host the deployment packages in S3**
 
-The Stale Playlist Detector (SPD) is started from the `main.js` program. It can run on most platforms compatible with Node.js LTS. You should be able to run the program on a workstation, physical or virtual server. If you are monitoring a playlist with a large number of bitrates, you may be constrained by network performance on the local network. Verifying operation of the SPD should work fine from your workstation. After installing the npm dependencies and setting environment variables, the following should be all that's needed to begin monitoring an HLS origin:
-
-`node main.js`
-
-The program will continously output messages as it monitors the origin, regardless if any notification method was specified. The SPD can be launched in the background as a daemon process (headless) or launched inside a terminal multiplexer like [tmux](https://github.com/tmux/tmux/wiki).
-
-### Building and Installing a Docker Container
-
-Use the `Dockerfile` provided in the Git repository to build a container image and store it into an image repository for deployment. The following is an example command to build and tag the image. Run it from the same folder in which the `Dockerfile` is located.
-
-`docker build -t stale-playlist-detector .`
-
-Run the Docker image with a command similar to the following. Setting at least the SPD\_ORIGIN\_URL environment variable is required to run the image.
+**For each region** you want to deploy to:
 
 ```
-docker run -it \
-    -e SPD_ORIGIN_URL=https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8 \
-    stale-playlist-detector:latest
+cd deployment
+aws s3 cp global-s3-assets/* s3://<base-bucket-name>-<region>/<project>/<version>
+aws s3 cp regional-s3-assets/* s3://<base-bucket-name>-<region>/<project>/<version>
 ```
-
-After you start the container, it will parse the top-level playlist for the origin, find any child playlists and sample those on a periodic basis checking for changes to the playlist content. Below is sample output from the Stale Playlist Detector when it starts.
-
-```
-info: specified duration is 10s [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8]
-info: content hash is dfb189b7e44a40c042b74248da4d3a21 [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8]
-info: {"fromState":"refresh","action":"","toState":"check","namespace":"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8"}
-info: maximum allowed duration is 15s [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8]
-info: change due by 20:28:00 GMT+0000 (Coordinated Universal Time) 1563913680 [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8]
-info: {"fromState":"check","action":"","toState":"fresh","namespace":"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8"}
-info: fresh playlist [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8]
-```
-
-This is a static, looping stream which will cause the SPD to issue errors to the console after about 15-20 seconds.
-
-```
-info: specified duration is 10s [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8]
-info: content hash is dfb189b7e44a40c042b74248da4d3a21 [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8]
-info: {"fromState":"refresh","action":"","toState":"check","namespace":"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8"}
-info: maximum allowed duration is 15s [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8]
-info: change due by 20:28:00 GMT+0000 (Coordinated Universal Time) 1563913680 [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8]
-info: {"fromState":"check","action":"","toState":"stale","namespace":"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8"}
-error: stale playlist [https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8]
-info: 5 total playlists, 0 fresh, 5 stale, 100% stale, 95% stale tolerance
-info: notify message = {"options":{"cdn_url":"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8","duration_multiplier":1.5,"name":"Stale Playlist Detector","origin_url":"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8","region":"us-west-2","stale_tolerance":0.95},"playlists":{"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/prog_index.m3u8":{"state":"stale","changed":1563913665,"duration":10,"mean_duration":0,"median_duration":0,"min_duration":0,"max_duration":0},"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear2/prog_index.m3u8":{"state":"stale","changed":1563913665,"duration":10,"mean_duration":0,"median_duration":0,"min_duration":0,"max_duration":0},"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear3/prog_index.m3u8":{"state":"stale","changed":1563913665,"duration":10,"mean_duration":0,"median_duration":0,"min_duration":0,"max_duration":0},"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear4/prog_index.m3u8":{"state":"stale","changed":1563913665,"duration":10,"mean_duration":0,"median_duration":0,"min_duration":0,"max_duration":0},"https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear0/prog_index.m3u8":{"state":"stale","changed":1563913665,"duration":11,"mean_duration":0,"median_duration":0,"min_duration":0,"max_duration":0}},"detector":{"total":5,"fresh":0,"stale":5,"stale_playlist_percent":100,"stale_tolerance_percent":95,"state":"stale","sequence":0}}
-info: skipping SQS
-info: skipping SNS
-```
-
-Notice the messages leading up to the determination that playlists are stale. The Stale Playlist Detector (SPD) will print the duration specified in the playlist, the maximum allowed duration, the last content hash of the specific child playlist being checked, and the number of fresh and stale playlists. The SPD also prints the notification message it would send. Since we did not specify notification through SQS or SNS, the detector indicates that on the console output.
-
-Once enough playlists have changed, the SPD will report the origin as fresh and optionally issue a notification through SQS or SNS.
 
 ## Navigate
 
