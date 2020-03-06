@@ -7,7 +7,7 @@ Metadata:
     ParameterGroups:
     - Label:
         default: 'Lambda Utility Parameters'
-      Parameters:
+      Paramete rs:
       - ClusteredVideoStreamName
       - DynamoDBTableExists
       - LogLevel
@@ -36,13 +36,13 @@ Parameters:
     Type: String
     Default: "eu-west-2"
     Description: Name of the AWS region for the second playlist
-  RegionOnePlaylistBucket:
+  RegionOneMasterPlaylistBucket:
     Type: String
     Description: Name of the bucket used to store the merged master playlist in RegionOne
   RegionOneCloudfrontDistributionId:
     Type: String
     Description: Cloudfront Distribution ID in region one we want to act on
-  RegionTwoPlaylistBucket:
+  RegionTwoMasterPlaylistBucket:
     Type: String
     Description: Name of the bucket used to store the merged master playlist in RegionTwo
   RegionOneOriginAccessIdentity:
@@ -172,14 +172,14 @@ Resources:
         Comment: !Sub "Master playlist for ClusteredVideoStream: ${ClusteredVideoStreamName}" 
         Origins:
         - Id: !Join ["-", [!Ref "AWS::StackName", "S3-region-one"] ]
-          DomainName: !Sub "${RegionOnePlaylistBucket}.s3.${RegionOne}.amazonaws.com"
+          DomainName: !Sub "${RegionOneMasterPlaylistBucket}.s3.${RegionOne}.amazonaws.com"
           S3OriginConfig:
             OriginAccessIdentity:
               Fn::Sub:
                 - "origin-access-identity/cloudfront/${RegionOneOriginAccessIdentity}"
                 - RegionOneOriginAccessIdentity: !Ref RegionOneOriginAccessIdentity
         - Id: !Join ["-", [!Ref "AWS::StackName", "S3-region-two"] ]
-          DomainName: !Sub "${RegionTwoPlaylistBucket}.s3.${RegionTwo}.amazonaws.com"
+          DomainName: !Sub "${RegionTwoMasterPlaylistBucket}.s3.${RegionTwo}.amazonaws.com"
           S3OriginConfig:
             OriginAccessIdentity:
               Fn::Sub:

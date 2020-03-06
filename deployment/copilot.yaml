@@ -22,7 +22,7 @@ Parameters:
     Type: String
     Default: "eu-west-2"
     Description: Region (e.g. 'us-west-2', 'eu-west-1', ...) the second live stream is deployed in
-  StreamRegionOneCloudFrontDomain:
+  RegionOneDistributionDomain:
     Type: String
     Description: CloudFront domain of the video stream instance in the 
       first region
@@ -90,7 +90,7 @@ Resources:
           
           # These values are set in CloudFormation during deployment of the OriginLambda resource
           REGION_LOOKUP = {
-              "${StreamRegionOneCloudFrontDomain}":"${RegionOne}",
+              "${RegionOneDistributionDomain}":"${RegionOne}",
               "${StreamRegionTwoCloudFrontDomain}": "${RegionTwo}"
           }
 
