@@ -133,3 +133,32 @@ popd
 zip -g dist/cfn-init-clustered-video-stream.zip *.py
 
 cp "./dist/cfn-init-clustered-video-stream.zip" "$build_dist_dir/cfn-init-clustered-video-stream.zip"
+
+echo "------------------------------------------------------------------------------"
+echo "[Rebuild] Copy website custom resource"
+echo "------------------------------------------------------------------------------"
+
+cd $source_dir/cfn-s3copyobjects || exit
+
+[ -e dist ] && rm -r dist
+mkdir -p dist
+
+[ -e package ] && rm -r package
+mkdir -p package
+
+# Make lambda package
+pushd package
+echo "Create lambda package"
+pip install -r ../requirements.txt --target .
+zip -r9 ../dist/cfn-s3copyobjects.zip .
+popd
+
+zip -g dist/cfn-s3copyobjects.zip *.py
+
+cp "./dist/cfn-s3copyobjects.zip" "$build_dist_dir/cfn-s3copyobjects.zip"
+
+echo "------------------------------------------------------------------------------"
+echo "[Rebuild] Build web page assets"
+echo "------------------------------------------------------------------------------"
+
+cp -r $source_dir/website $build_dist_dir

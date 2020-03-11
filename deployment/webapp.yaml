@@ -1,0 +1,276 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Clustered Video Streams - create CloudFront distribution and website bucket.
+
+#
+# Mappings to store fixed value of the solution
+#
+Mappings:
+    SourceCode:
+      General:
+        S3Bucket: "%%BUCKET_NAME%%"
+        KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
+    Solution:
+        Package:
+            WebApp: "%PKG_WEBAPP%"
+        Website:
+            MainPage: "demo.html"
+          
+    
+
+Parameters:
+    SolutionId:
+        Type: String
+        Description: "part of the resource naming"
+    RootStackName:
+        Type: String
+        Description: "part of the resource naming"
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    CustomResourceArn:
+        Type: String
+        Description: for post-processing
+    WebBucket:
+        Type: String
+        Description: "store website content"
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+    ClusteredVideoStreamName:
+        Type: String
+        Description: "Name of clustered video stream"
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+
+Metadata:
+    cfn-lint:
+        config:
+            ignore_checks:
+                # ignore RootStackName not being used
+                - W2001
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: "Solution Configuration"
+                Parameters:
+                    - SolutionId
+                    - RootStackName
+            -
+                Label:
+                    default: "CloudFront Configuration"
+                Parameters:
+                    - WebBucket
+        ParameterLabels:
+            SolutionId:
+                default: "Solution Id"
+            RootStackName:
+                default: "Top Stack Name"
+            WebBucket:
+                default: "Website Bucket"
+
+Conditions:
+    bUSEast1: !Equals [!Ref "AWS::Region", "us-east-1"]
+    
+
+Resources:
+    #
+    # OAID
+    #
+    OriginAccessIdentity:
+        Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+        Properties:
+            CloudFrontOriginAccessIdentityConfig:
+                Comment: !Sub "access-identity-${WebBucket}"
+
+    #
+    # Bucket Policy
+    #
+    BucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: F16
+                        reason: "website bucket policy requires a wildcard principal"
+        Properties:
+            Bucket: !Ref WebBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: "*"
+                        Resource: !Sub "arn:aws:s3:::${WebBucket}/*"
+                        Condition:
+                            Bool:
+                                "aws:SecureTransport": false
+                    -
+                        Effect: Allow
+                        Action:
+                            - "s3:GetObject"
+                        Resource:
+                            - !Sub "arn:aws:s3:::${WebBucket}/*"
+                        Principal:
+                            CanonicalUser: !GetAtt OriginAccessIdentity.S3CanonicalUserId
+
+    #
+    # copy web content to web bucket
+    #
+    WebsiteContent:
+      Properties:
+        ServiceToken: !GetAtt CopyS3ObjectsFunction.Arn
+        SourceBucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        SourcePrefix: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "website/"]] 
+        Bucket: !Ref WebBucket
+      Type: "Custom::S3Objects"
+
+    S3CopyRole:
+      Type: AWS::IAM::Role
+      Properties:
+
+        Path: /clustered-video-streams/
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            -
+              Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          -
+            PolicyName: S3Access
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                -
+                  Sid: AllowLogging
+                  Effect: Allow
+                  Action:
+                    - "logs:CreateLogGroup"
+                    - "logs:CreateLogStream"
+                    - "logs:PutLogEvents"
+                  Resource: "*"
+                -
+                  Sid: SourceBucketReadAccess
+                  Effect: Allow
+                  Action:
+                    - "s3:ListBucket"
+                    - "s3:GetObject"
+                  Resource:
+                    - !Join 
+                      - "" 
+                      - - "arn:aws:s3:::"
+                        - !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+                    - !Join 
+                      - ""
+                      - - "arn:aws:s3:::"
+                        - !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+                        - "/"
+                        - !FindInMap ["SourceCode", "General", "KeyPrefix"]
+                -
+                  Sid: DestBucketWriteAccess
+                  Effect: Allow
+                  Action:
+                    - "s3:ListBucket"
+                    - "s3:GetObject"
+                    - "s3:PutObject"
+                    - "s3:PutObjectAcl"
+                    - "s3:PutObjectVersionAcl"
+                    - "s3:DeleteObject"
+                    - "s3:DeleteObjectVersion"
+                    - "s3:CopyObject"
+                  Resource:
+                    - !Sub "arn:aws:s3:::${WebBucket}"
+                    - !Sub "arn:aws:s3:::${WebBucket}/*"
+                    - "*"
+
+    CopyS3ObjectsFunction:
+      Properties:
+        Description: Copies objects from a source S3 bucket to a destination
+        Handler: cfn-s3copyobjects.handler
+        Runtime: python3.8
+        Role: !GetAtt S3CopyRole.Arn
+        Timeout: 120
+        Timeout: 10
+        Code:
+          S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+          S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"], "cfn-s3copyobjects.zip"]] 
+        Tags:
+          - Key: Stack
+            Value: !Ref 'AWS::StackName'
+          - Key: ClusteredVideoStreamName
+            Value: !Ref ClusteredVideoStreamName
+          
+      Type: AWS::Lambda::Function
+    
+    #
+    # CloudFront distribution
+    #
+    Distribution:
+        Type: AWS::CloudFront::Distribution
+        Properties:
+            DistributionConfig:
+                Comment: "Website distribution for ClusteredVideoStreams solution"
+                Origins:
+                    -
+                        Id: !Sub "S3-${WebBucket}"
+                        DomainName: !If [
+                            bUSEast1,
+                            !Sub "${WebBucket}.s3.amazonaws.com",
+                            !Sub "${WebBucket}.s3.${AWS::Region}.amazonaws.com"
+                        ]
+                        S3OriginConfig:
+                            OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${OriginAccessIdentity}"
+                DefaultCacheBehavior:
+                    TargetOriginId: !Sub "S3-${WebBucket}"
+                    AllowedMethods: [
+                        GET,
+                        HEAD,
+                        OPTIONS,
+                        PUT,
+                        POST,
+                        DELETE,
+                        PATCH
+                    ]
+                    CachedMethods: [
+                        GET,
+                        HEAD,
+                        OPTIONS
+                    ]
+                    ForwardedValues:
+                        QueryString: false
+                    ViewerProtocolPolicy: redirect-to-https
+                DefaultRootObject: !FindInMap ["Solution", "Website", "MainPage"]
+                CustomErrorResponses:
+                    -
+                        ErrorCode: 403
+                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
+                        ResponseCode: 200
+                    -
+                        ErrorCode: 404
+                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
+                        ResponseCode: 200
+                IPV6Enabled: true
+                ViewerCertificate:
+                    CloudFrontDefaultCertificate: true
+                Enabled: true
+                HttpVersion: "http2"
+                Logging:
+                    Bucket: !Sub "${WebBucket}.s3.amazonaws.com"
+                    Prefix: cf_logs/
+                    IncludeCookies: true
+
+Outputs:
+
+    DistributionId:
+        Value: !Ref Distribution
+        Description: "Distribution Id"
+
+    WebsiteUrl:
+        Value: !Sub https://${Distribution.DomainName}
+        Description: "Website URL"
