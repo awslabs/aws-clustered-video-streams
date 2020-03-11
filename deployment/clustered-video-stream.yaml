@@ -326,9 +326,9 @@ Outputs:
     Value: !GetAtt MasterPlaylistCloudfrontDistribution.DomainName
     Export:
       Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistCloudfrontDomain'] ]
-  WebsiteUrl:
+  DashboardUrl:
     Description: 'Web site for control panel'
     Value: !Join ["/", ["https:/", !GetAtt MasterPlaylistCloudfrontDistribution.DomainName, "dashboard.html"]]
     Export:
-      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'WebsiteUrl'] ]
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'DashboardUrl'] ]
  

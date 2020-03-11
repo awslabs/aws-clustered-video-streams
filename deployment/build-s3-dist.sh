@@ -135,7 +135,7 @@ zip -g dist/cfn-init-clustered-video-stream.zip *.py
 cp "./dist/cfn-init-clustered-video-stream.zip" "$build_dist_dir/cfn-init-clustered-video-stream.zip"
 
 echo "------------------------------------------------------------------------------"
-echo "[Rebuild] Copy website custom resource"
+echo "[Rebuild] Copy dashboard custom resource"
 echo "------------------------------------------------------------------------------"
 
 cd $source_dir/cfn-s3copyobjects || exit
@@ -161,4 +161,4 @@ echo "--------------------------------------------------------------------------
 echo "[Rebuild] Build web page assets"
 echo "------------------------------------------------------------------------------"
 
-cp -r $source_dir/website $build_dist_dir
+cp -r $source_dir/dashboard $build_dist_dir

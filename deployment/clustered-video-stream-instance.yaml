@@ -267,11 +267,11 @@ Resources:
         
   # copy web content to web bucket
   #
-  WebsiteContent:
+  DashboardContent:
     Properties:
       ServiceToken: !GetAtt CopyS3ObjectsFunction.Arn
       SourceBucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-      SourcePrefix: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "website/"]] 
+      SourcePrefix: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "dashboard/"]] 
       Bucket: !Ref PlaylistBucket
     Type: "Custom::S3Objects"
 

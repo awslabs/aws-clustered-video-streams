@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: Clustered Video Streams - create CloudFront distribution and website bucket.
+Description: Clustered Video Streams - create CloudFront distribution and dashboard bucket.
 
 #
 # Mappings to store fixed value of the solution
@@ -13,7 +13,7 @@ Mappings:
     Solution:
         Package:
             WebApp: "%PKG_WEBAPP%"
-        Website:
+        Dashboard:
             MainPage: "demo.html"
           
     
@@ -37,7 +37,7 @@ Parameters:
         Description: for post-processing
     WebBucket:
         Type: String
-        Description: "store website content"
+        Description: "store dashboard content"
         AllowedPattern: "[a-z][a-z0-9-_]*"
     ClusteredVideoStreamName:
         Type: String
@@ -69,7 +69,7 @@ Metadata:
             RootStackName:
                 default: "Top Stack Name"
             WebBucket:
-                default: "Website Bucket"
+                default: "Dashboard Bucket"
 
 Conditions:
     bUSEast1: !Equals [!Ref "AWS::Region", "us-east-1"]
@@ -95,7 +95,7 @@ Resources:
                 rules_to_suppress:
                     -
                         id: F16
-                        reason: "website bucket policy requires a wildcard principal"
+                        reason: "dashboard bucket policy requires a wildcard principal"
         Properties:
             Bucket: !Ref WebBucket
             PolicyDocument:
@@ -120,11 +120,11 @@ Resources:
     #
     # copy web content to web bucket
     #
-    WebsiteContent:
+    DashboardContent:
       Properties:
         ServiceToken: !GetAtt CopyS3ObjectsFunction.Arn
         SourceBucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
-        SourcePrefix: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "website/"]] 
+        SourcePrefix: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "dashboard/"]] 
         Bucket: !Ref WebBucket
       Type: "Custom::S3Objects"
 
@@ -215,7 +215,7 @@ Resources:
         Type: AWS::CloudFront::Distribution
         Properties:
             DistributionConfig:
-                Comment: "Website distribution for ClusteredVideoStreams solution"
+                Comment: "Dashboard distribution for ClusteredVideoStreams solution"
                 Origins:
                     -
                         Id: !Sub "S3-${WebBucket}"
@@ -245,15 +245,15 @@ Resources:
                     ForwardedValues:
                         QueryString: false
                     ViewerProtocolPolicy: redirect-to-https
-                DefaultRootObject: !FindInMap ["Solution", "Website", "MainPage"]
+                DefaultRootObject: !FindInMap ["Solution", "Dashboard", "MainPage"]
                 CustomErrorResponses:
                     -
                         ErrorCode: 403
-                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
+                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Dashboard", "MainPage"]}]
                         ResponseCode: 200
                     -
                         ErrorCode: 404
-                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
+                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Dashboard", "MainPage"]}]
                         ResponseCode: 200
                 IPV6Enabled: true
                 ViewerCertificate:
@@ -271,6 +271,6 @@ Outputs:
         Value: !Ref Distribution
         Description: "Distribution Id"
 
-    WebsiteUrl:
+    DashboardUrl:
         Value: !Sub https://${Distribution.DomainName}
-        Description: "Website URL"
+        Description: "Dashboard URL"
