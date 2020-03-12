@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A "Clustered Video Stream" is a set of redundant HLS video stream instances that are 
+    deployed one stream per region.  The HTTP(S) reponse of each video stream instance is controlled 
+    by an edge lambda function, called the "copilot", that is attached to its cloudfront distribution. 
+    
+    This stack deploys the copilot component in a single instance of the Clustered Video Stream.  
+
+Mappings:
+  SourceCode:
+    General:
+      S3Bucket: "%%BUCKET_NAME%%"
+      KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
+  
+Parameters:
+  ClusteredVideoStreamName:
+    Type: String 
+    Description: Name of the clustered video stream
+  CopilotLambdaArn:
+    Type: String
+    Description: Versioned ARN of copilot lambda to deploy to video stream edge
+  CopilotLambdaVersion:
+    Type: Number
+    Description: Version number of copilot lambda to deploy to video stream edge
+  CloudfrontDistributionId:
+    Type: String
+    Description: Cloudfront Distribution ID we want to act on
+  RegionOne: 
+    Type: String
+    Default: eu-west-1
+    Description: Name of the AWS region for the first playlist
+  RegionTwo: 
+    Type: String
+    Default: eu-west-2
+    Description: Name of the AWS region for the second playlist
+
+
+#Metadata:
+  
+#Conditions:
+  
+Resources:
+
+
+      
+Outputs:
+  ModuleId:
+    Value: 'clustered-video-stream-instance'
+  ModuleVersion:
+    Value: '1.0.0'
+  StackName:
+    Value: !Ref 'AWS::StackName'
+  MasterPlaylistBucket:
+    Description: The containing the master playlist  in the first region
+    Value: !Ref PlaylistBucket
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'MasterPlaylistBucket'] ]
+  CloudfrontDistributionId:
+    Description: Cloudfront Distribution ID we want to act on
+    Value: !Ref CloudfrontDistributionId
+    Export:
+        Name: !Join [ ':', [ !Ref 'AWS::StackName', 'CloudfrontDistributionId'] ]
+  OriginAccessIdentity:
+    Description: 'Origin access identity for master playlist'
+    Value: !Ref OriginAccessIdentity
+    Export:
+        Name: !Join [ ':', [ !Ref 'AWS::StackName', 'OriginAccessIdentity'] ]
+  
+  

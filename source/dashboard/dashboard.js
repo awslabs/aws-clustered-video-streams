@@ -151,7 +151,8 @@ var interval_task = () => {
 $(document).ready(function() {
     console.log("ready");
     $("#update-icon").html(`<i class="material-icons">cloud_off</i>`);
-    table_name = window.localStorage.getItem('clustered_video_stream_name');
+    clustered_video_stream_name = window.localStorage.getItem('clustered_video_stream_name');
+    table_name = clustered_video_stream_name;
     access_key_id = window.localStorage.getItem('access_key_id');
     secret_access_key = window.localStorage.getItem('secret_access_key');
     sdk_region = window.localStorage.getItem('sdk_region');
