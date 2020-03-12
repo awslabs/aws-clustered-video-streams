@@ -263,6 +263,97 @@ Resources:
       Id: !Ref CloudfrontDistributionId
       LambdaFunctionARN: !Join [":", [!Ref CopilotLambdaArn, !Ref CopilotLambdaVersion]]
       EventType: "origin-request"
+  
+        
+  # copy web content to web bucket
+  #
+  DashboardContent:
+    Properties:
+      ServiceToken: !GetAtt CopyS3ObjectsFunction.Arn
+      SourceBucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+      SourcePrefix: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"],  "dashboard/"]] 
+      Bucket: !Ref PlaylistBucket
+    Type: "Custom::S3Objects"
+
+  S3CopyRole:
+    Type: AWS::IAM::Role
+    Properties:
+
+      Path: /clustered-video-streams/
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: S3Access
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Sid: AllowLogging
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+              -
+                Sid: SourceBucketReadAccess
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                  - "s3:GetObject"
+                Resource:
+                  - !Join 
+                    - "" 
+                    - - "arn:aws:s3:::"
+                      - !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+                  - !Join 
+                    - ""
+                    - - "arn:aws:s3:::"
+                      - !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+                      - "/"
+                      - !FindInMap ["SourceCode", "General", "KeyPrefix"]
+              -
+                Sid: DestBucketWriteAccess
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:PutObjectAcl"
+                  - "s3:PutObjectVersionAcl"
+                  - "s3:DeleteObject"
+                  - "s3:DeleteObjectVersion"
+                  - "s3:CopyObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${PlaylistBucket}"
+                  - !Sub "arn:aws:s3:::${PlaylistBucket}/*"
+                  - "*"
+
+  CopyS3ObjectsFunction:
+    Properties:
+      Description: Copies objects from a source S3 bucket to a destination
+      Handler: cfn-s3copyobjects.handler
+      Runtime: python3.8
+      Role: !GetAtt S3CopyRole.Arn
+      Timeout: 120
+      Timeout: 10
+      Code:
+        S3Bucket: !Join ["-", [!FindInMap ["SourceCode", "General", "S3Bucket"], Ref: "AWS::Region"]]
+        S3Key: !Join ["/", [!FindInMap ["SourceCode", "General", "KeyPrefix"], "cfn-s3copyobjects.zip"]] 
+      Tags:
+        - Key: Stack
+          Value: !Ref 'AWS::StackName'
+        - Key: ClusteredVideoStreamName
+          Value: !Ref ClusteredVideoStreamName
+        
+    Type: AWS::Lambda::Function
       
 Outputs:
   ModuleId:

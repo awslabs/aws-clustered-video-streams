@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+
+<!-- 
+Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+       SPDX-License-Identifier: Apache-2.0
+-->
+
+<head>
+    <title>CloudFront Co-Pilot Dashboard</title>
+    <!-- material design -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/4.1.2/css/tabulator.min.css" integrity="sha256-NewTV8E6IyXxLZQ2qQcS8XCB2TOII73LVvH57rp9kiE=" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/4.1.2/css/bootstrap/tabulator_bootstrap4.min.css" integrity="sha256-DDJiZD+ORXOovR4Qln+so9eW8YGdlqyaDRkxxPo0dRs=" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js" integrity="sha256-KM512VNnjElC30ehFwehXjx1YCHPiQkOPmqnrWtpccM=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.4/umd/popper.min.js" integrity="sha256-EGs9T1xMHdvM1geM8jPpoo8EZ1V1VRsmcJz8OByENLA=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/4.1.2/js/tabulator.min.js" integrity="sha256-C2vQLVoRZEK5WCH+4cp6B5CdxeAXev735CdK+2aPs7o=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/4.1.2/js/jquery_wrapper.min.js" integrity="sha256-3hV8hYuqj/Es6MGB4/mfB+VXmhJvohcbdxvVhXtl1B4=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/handlebars.js/4.0.12/handlebars.min.js" integrity="sha256-qlku5J3WO/ehJpgXYoJWC2px3+bZquKChi4oIWrAKoI=" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/renderjson@1.4.0/renderjson.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/URI.js/1.19.1/URI.min.js" integrity="sha256-D3tK9Rf/fVqBf6YDM8Q9NCNf/6+F2NOKnYSXHcl0keU=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jssha@2.3.1/src/sha.min.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.480.0.min.js"></script>
+    <script src="dashboard.js"></script>
+    <style>
+        .borderless td,
+        .borderless th {
+            border: none;
+        }
+        
+        .hidden-div {
+            display: none;
+        }
+        
+        .visible-div {
+            display: inherit;
+        }
+        
+        .modal-xlg {
+            max-width: 80% !important;
+        }
+        
+        .no-gutters {
+            margin-right: 0;
+            margin-left: 0;
+        }
+        
+        .tabulator .tabulator-header .tabulator-col {
+            text-align: center;
+        }
+        
+        .playlist-fresh {
+            color: green;
+        }
+        
+        .playlist-stale {
+            color: red;
+        }
+        
+        .distro-open {
+            color: green;
+        }
+        
+        .distro-blocked {
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+    <p class="h2 p-2">CloudFront Co-Pilot Dashboard</p>
+    <div id="credentials-container" class="px-4">
+        <div>
+            <input type="text" id="clusteredVideoStreamNameInput" class="w-25 mr-2">
+            <label for="clusteredVideoStreamNameLabel">Clustered Video Stream Name</label>
+        </div>
+        <div>
+            <input type="password" id="accessKeyIdInput" class="w-25 mr-2">
+            <label for="accessKeyIdLabel">Access Key ID</label>
+        </div>
+        <div>
+            <input type="password" id="secretAccessKeyInput" class="w-25 mr-2">
+            <label for="secretAccessKeyLabel">Secret Access Key</label>
+        </div>
+        <div>
+            <input type="text" id="regionInput" class="w-25 mr-2">
+            <label for="regionInput">Region to Connect</label>
+        </div>
+    </div>
+    <p class="h3 pt-4 p-2">Status and Control<span class="mx-2" id="update-icon"></span></p>
+    <div id="status-control-container" class="px-4">
+        <div id="status-control-inner">
+
+        </div>
+    </div>
+</body>
+
+</html>
