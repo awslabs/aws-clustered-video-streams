@@ -7,7 +7,7 @@
 ## Prerequisites
 
 1. Decide which AWS regions you want to use to host your clustered video stream in.  The architecture currently supports a two region deploy.  
-2. Follow the instructions in the [Developing](https://quip-amazon.com/vSwOA2vuRTaU#ATC9CAssfFe) section to build and host the project in your AWS account.
+2. Follow the instructions in the [Developing](#developing) section to build and host the project in your AWS account.
 3. Deploy your live streams to RegionOne and RegionTwo as you normally do.  The streams must have a separate CloudFront distribution for each region.  You can use the [Live Streaming on AWS](https://aws.amazon.com/solutions/live-streaming-on-aws/) solution as a starting point for setting up the live streams.  Simply deploy an instance of that solution in each of your chosen regions.
 4. Gather values for the following properties of these base live streams to be used in deploying the rest of the stack:
     * *RegionOne* - the first region you want to deploy stream instances to

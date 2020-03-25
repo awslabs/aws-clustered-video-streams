@@ -6,3 +6,4 @@ deployment/regional-s3-assets
 **/tmp
 **/dist
 **/package
+.vscode/

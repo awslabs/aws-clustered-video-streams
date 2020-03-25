@@ -14,7 +14,7 @@ Failure scenarios addressed:
 
 ## How it works
 
-A ***clustered video stream*** is composed of N identical redundant live video *stream instances* that are each deployed in a different AWS region.   Each ***stream instance*** has an origin HTTP(S) endpoint (MediaPackage, S3, etc.) and an AWS CloudFront CDN HTTP(S) endpoint that are unique to the region.  Stream instances are shown in the purple shaded boxes in [Figure 1 - clustered video…](https://quip-amazon.com/vSwOA2vuRTaU#ATC9CAmI0l9) below.
+A ***clustered video stream*** is composed of N identical redundant live video *stream instances* that are each deployed in a different AWS region.   Each ***stream instance*** has an origin HTTP(S) endpoint (MediaPackage, S3, etc.) and an AWS CloudFront CDN HTTP(S) endpoint that are unique to the region.  Stream instances are shown in the purple shaded boxes in **Figure 1 - clustered video stream architecture** below.
 
 ![Image: image](images/clustered-video-stream-deploy.png)
 
