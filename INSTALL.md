@@ -144,6 +144,15 @@ You must have a bucket for hosting lambda packages and web page assets in each A
 1. elementalrodeo99-eu-west-1
 1. elementalrodeo99-eu-west-2
 
+Here is an example using the AWS CLI.
+
+```
+aws s3 mb s3://elementalrodeo99-eu-west-1 [--profile profilename] --region eu-west-1
+aws s3 mb s3://elementalrodeo99-eu-west-2 [--profile profilename] --region eu-west-2
+```
+
+Make sure to specify the `--region` option to create the bucket in the required region. Use the `--profile` option if you need to use the non-default credentials from your CLI configuration.
+
 **Build the deployment packages**
 
 The build script will create regional and global S3 assets required to deploy a clustered video stream on AWS.  
