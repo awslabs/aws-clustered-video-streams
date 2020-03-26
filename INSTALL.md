@@ -139,7 +139,7 @@ The build steps below use the following variables:
 
 **Create S3 buckets for hosting lambdas**
 
-You must have a bucket for hosting lambda packages and web page assets in each AWS region that you want to deploy to.  The bucket names should be of the following format: <*base-bucket-name>*-<*region-name>*.  For example, if my base-bucket-name is “elementalrodeo99” and I want to deploy in eu-west-1 and eu-west-2, I would create the followin S3 buckets:
+You must have a bucket for hosting lambda packages and web page assets in each AWS region that you want to deploy to.  The bucket names should be of the following format: <*base-bucket-name>*-<*region-name>*.  For example, if your base-bucket-name is “elementalrodeo99” and you want to deploy in eu-west-1 and eu-west-2, create the following S3 buckets:
 
 elementalrodeo99-eu-west-1
 elementalrodeo99-eu-west-2
