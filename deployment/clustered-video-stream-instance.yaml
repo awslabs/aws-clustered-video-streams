@@ -46,6 +46,15 @@ Resources:
   PlaylistBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
+    Properties:
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders: 
+              - "*"
+              AllowedMethods: 
+              - "GET"
+              AllowedOrigins: 
+              - "*"
     
   OriginAccessIdentity:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
