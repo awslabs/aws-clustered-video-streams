@@ -8,6 +8,7 @@ var table_name;
 var access_key_id;
 var secret_access_key;
 var sdk_region;
+var interval_id;
 
 const UPDATE_INTERVAL_MS = 2000;
 
@@ -110,9 +111,24 @@ var updateBlockingState = function(domain, state) {
     });
 }
 
+var show_alert = (text) => {
+    $("#problem-alert").removeClass("d-none").text(text);
+}
+
+var hide_alert = () => {
+    $("#problem-alert").addClass("d-none");
+}
+
+var cloud_connected = () => {
+    $("#update-icon").html(`<i class="material-icons">cloud_download</i>`);
+}
+
+var cloud_disconnected = () => {
+    $("#update-icon").html(`<i class="material-icons">cloud_off</i>`);
+}
+
 var interval_task = () => {
     try {
-        $("#update-icon").html(`<i class="material-icons">update</i>`);
         if (access_key_id && secret_access_key && sdk_region) {
             var dynamodb = new AWS.DynamoDB({
                 "accessKeyId": access_key_id,
@@ -123,17 +139,22 @@ var interval_task = () => {
                 "service": dynamodb
             });
             var params = {
-                TableName: table_name
+                TableName: clustered_video_stream_name
             };
             documentClient.scan(params, function(err, data) {
                 if (err) {
                     console.log(err, err.stack);
+                    clearInterval(interval_id);
+                    show_alert(err);
+                    cloud_disconnected();
                 } else {
                     configuration = data.Items;
                     for (var c of configuration) {
                         var timestamp = Number.parseInt(Number.parseFloat(c["aws:rep:updatetime"]) * 1000)
                         c["updated"] = new Date(timestamp).toLocaleString();
                     }
+                    cloud_connected();
+                    hide_alert();
                     status_and_control_table.replaceData(configuration);
                 }
             });
@@ -142,22 +163,24 @@ var interval_task = () => {
         }
     } catch (error) {
         console.error(error);
-        $("#update-icon").html(`<i class="material-icons">cloud_off</i>`);
+        clearInterval(interval_id);
+        show_alert(error);
+        cloud_disconnected();
     }
-    $("#update-icon").html("");
 }
 
 // PAGE ENTRY POINT
 $(document).ready(function() {
     console.log("ready");
     $("#update-icon").html(`<i class="material-icons">cloud_off</i>`);
+    show_alert("Update the fields below and click Start to show status");
     clustered_video_stream_name = window.localStorage.getItem('clustered_video_stream_name');
     table_name = clustered_video_stream_name;
     access_key_id = window.localStorage.getItem('access_key_id');
     secret_access_key = window.localStorage.getItem('secret_access_key');
     sdk_region = window.localStorage.getItem('sdk_region');
     if (!sdk_region) {
-        sdk_region = "eu-west-1";
+        sdk_region = "us-east-1";
     }
     $("#clusteredVideoStreamNameInput").val(clustered_video_stream_name);
     $("#accessKeyIdInput").val(access_key_id);
@@ -165,25 +188,32 @@ $(document).ready(function() {
     $("#regionInput").val(sdk_region)
     init_control_compartment();
     configuration = [];
-    $("#clusteredVideoStreamNameInput").on("blur", (event) => {
-        console.log(event);
-        clustered_video_stream_name = event.target.value;
+    $("#start-button").click((event) => {
+        $("#start-button").text("Restart");
+        clustered_video_stream_name = $("#clusteredVideoStreamNameInput").val();
+        access_key_id = $("#accessKeyIdInput").val();
+        secret_access_key = $("#secretAccessKeyInput").val();
+        sdk_region = $("#regionInput").val();
         window.localStorage.setItem('clustered_video_stream_name', clustered_video_stream_name);
-    });
-    $("#accessKeyIdInput").on("blur", (event) => {
-        console.log(event);
-        access_key_id = event.target.value;
         window.localStorage.setItem('access_key_id', access_key_id);
-    });
-    $("#secretAccessKeyInput").on("blur", (event) => {
-        console.log(event);
-        secret_access_key = event.target.value;
         window.localStorage.setItem('secret_access_key', secret_access_key);
-    });
-    $("#regionInput").on("blur", (event) => {
-        console.log(event);
-        sdk_region = event.target.value;
         window.localStorage.setItem('sdk_region', sdk_region);
+        status_and_control_table.clearData();
+        if (interval_id) {
+            clearInterval(interval_id);
+        }
+        interval_id = setInterval(interval_task, UPDATE_INTERVAL_MS);
+        $("#stop-button").removeClass("d-none");
     });
-    setInterval(interval_task, UPDATE_INTERVAL_MS);
+    $("#stop-button").click((event) => {
+        $("#start-button").text("Start");
+        status_and_control_table.clearData();
+        if (interval_id) {
+            clearInterval(interval_id);
+        }
+        cloud_disconnected();
+        $("#stop-button").addClass("d-none");
+        show_alert("Update the fields below and click Start to show status");
+    });
+
 });

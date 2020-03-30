@@ -75,22 +75,28 @@ Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 <body>
     <p class="h2 p-2">CloudFront Co-Pilot Dashboard</p>
+    <div class="alert alert-danger mx-3 w-50" style="text-align: center;" role="alert" id="problem-alert">
+    </div>
     <div id="credentials-container" class="px-4">
         <div>
             <input type="text" id="clusteredVideoStreamNameInput" class="w-25 mr-2">
-            <label for="clusteredVideoStreamNameLabel">Clustered Video Stream Name</label>
+            <label for="clusteredVideoStreamNameInput">Clustered Video Stream Name</label>
         </div>
         <div>
             <input type="password" id="accessKeyIdInput" class="w-25 mr-2">
-            <label for="accessKeyIdLabel">Access Key ID</label>
+            <label for="accessKeyIdInput">Access Key ID</label>
         </div>
         <div>
             <input type="password" id="secretAccessKeyInput" class="w-25 mr-2">
-            <label for="secretAccessKeyLabel">Secret Access Key</label>
+            <label for="secretAccessKeyInput">Secret Access Key</label>
         </div>
         <div>
             <input type="text" id="regionInput" class="w-25 mr-2">
             <label for="regionInput">Region to Connect</label>
+        </div>
+        <div>
+            <button type="button" class="m-2 btn btn-success" id="start-button">Start</button>
+            <button type="button" class="m-2 btn btn-danger d-none" id="stop-button">Stop</button>
         </div>
     </div>
     <p class="h3 pt-4 p-2">Status and Control<span class="mx-2" id="update-icon"></span></p>
