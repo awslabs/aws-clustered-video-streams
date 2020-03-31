@@ -58,6 +58,7 @@ def create(event, context):
 
         config = response["Distribution"]
         item = {}
+        item["name"] = "(1) Primary Region"
         item["domain"] = config["DomainName"]
         item["region"] = event["ResourceProperties"]["RegionOne"]
         item["distro_open"] = True
@@ -69,6 +70,7 @@ def create(event, context):
         response = cloudfront_client.get_distribution(Id=event["ResourceProperties"]["RegionTwoCloudfrontDistributionId"])
 
         config = response["Distribution"]  
+        item["name"] = "(2) Secondary Region"
         item["domain"] = config["DomainName"]
         item["region"] = event["ResourceProperties"]["RegionTwo"]
         item["distro_open"] = True
