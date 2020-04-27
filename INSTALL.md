@@ -30,7 +30,6 @@ Use CloudFormation to deploy the stale playlist detector in each stream-region u
 **Run in regions:** RegionOne AND RegionTwo
 **Required Inputs:**
 
-* *DistributionDomain* 
 * *DistributionPlaylistUrl*
 * *OriginPlaylistUrl* 
 
