@@ -164,12 +164,14 @@ cd deployment
 
 **Host the deployment packages in S3**
 
+Use the `--profile` option if you need to use the non-default credentials from your CLI configuration.
+
 **For each region** you want to deploy to:
 
 ```
 cd deployment
-aws s3 cp global-s3-assets/* s3://<base-bucket-name>-<region>/<project>/<version>
-aws s3 cp regional-s3-assets/* s3://<base-bucket-name>-<region>/<project>/<version>
+aws s3 sync global-s3-assets/   s3://<base-bucket-name>-<region>/<project>/<version>/ [--profile profilename]
+aws s3 sync regional-s3-assets/ s3://<base-bucket-name>-<region>/<project>/<version>/ [--profile profilename]
 ```
 
 ## Navigate
