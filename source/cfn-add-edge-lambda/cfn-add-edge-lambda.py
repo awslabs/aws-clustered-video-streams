@@ -73,8 +73,7 @@ def handler(event, context):
 @helper.create
 @helper.update
 def create(event, context):
-    ReturnId = 0
-    logger.info("Got Create")
+    logger.info("Create or Update")
     logger.info(json.dumps(event))
 
     # Check that all the required properties are specified
@@ -84,8 +83,6 @@ def create(event, context):
         raise ValueError("Missing property 'LambdaFunctionARN'")
     if "EventType" not in event["ResourceProperties"]:
         raise ValueError("Missing property 'EventType'")
-
-    # ReturnId = event["ResourceProperties"]["Id"]
 
     lambda_association = {
         "LambdaFunctionARN": event["ResourceProperties"]["LambdaFunctionARN"],
@@ -117,12 +114,10 @@ def create(event, context):
     except Exception as e:
         raise e
 
-    # return ReturnId
-
 
 @helper.delete
 def delete(event, context):
-    logger.info("Got Delete")
+    logger.info("Delete")
     # Delete never returns anything. Should not fail if the underlying resources are already deleted.
     # Desired state.
 
