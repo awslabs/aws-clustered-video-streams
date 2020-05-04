@@ -77,6 +77,7 @@ Resources:
 
   OriginLambda:
     Type: AWS::Lambda::Function
+    DeletionPolicy: Retain
     Properties:
       Description: Handle a stale playlist alert by updating the state of the stream in the state table
       Handler: index.origin_request
