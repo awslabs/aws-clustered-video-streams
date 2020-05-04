@@ -266,6 +266,17 @@ Once the playlist has been uploaded to each bucket, you will need to invalidate 
 Wait a few seconds for the invalidation to complete.
 
 
+### Master Playlist URL
+
+The master playlist URL for your new clustered video stream will be the MasterPlaylistCloudfrontDomain with the playlist file name you created and any prefixes you added to the filename when it was uploaded. 
+
+`https://{MasterPlaylistCloudfrontDomain}/{prefixes}/{filename.m3u8}`
+
+The URL for the example shown above will be:
+
+`https://d1c7pcrqnzz476.cloudfront.net/playlist.m3u8`
+
+
 # Testing the deployment
 
 ### Testing failover
