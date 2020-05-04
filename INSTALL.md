@@ -15,12 +15,12 @@
     * For each region:
         * *CloudFrontDistributionId* - Id of the distribution in that region
         * *DistributionDomain* - domain name of the CloudFront Distribution in that region
-        * *DistributionPlaylistUrl *- The url, using the DistributionDomain, of the top-level playlist for the stream in this region.
-        * *OriginPlaylistUrl* - The url, using the OriginDomain, of the top-level playlist for the stream in this region.  If you are using MediaPackage as an origin, you can find this url in the MediaPackage console 
+        * *DistributionPlaylistUrl *- The url, using the DistributionDomain, of the master playlist for the stream in this region.
+        * *OriginPlaylistUrl* - The url, using the OriginDomain, of the master playlist for the stream in this region.  If you are using MediaPackage as an origin, you can find this url in the MediaPackage console 
 
 **Result**
 
-* ![Image: image](images/cvs-deploy-prereq.png)
+![Image: image](images/cvs-deploy-prereq.png)
 
 ## Deploy the Stale Playlist Detector stack
 
@@ -39,7 +39,7 @@ Use CloudFormation to deploy the stale playlist detector in each stream-region u
 
 **Result**
 
-* ![Image: spd-healthcheck-deploy.png](images/spd-healthcheck-deploy.png)
+![Image: spd-healthcheck-deploy.png](images/spd-healthcheck-deploy.png)
 
 
 ## Deploy the copilot lambda in us-east-1
@@ -79,7 +79,7 @@ Lambda@Edge functions must be defined in us-east-1 before they can be attached t
 
 **Result**
 
-* ![Image: clustered-video-stream-instance-deploy.png](images/clustered-video-stream-instance-deploy.png)
+![Image: clustered-video-stream-instance-deploy.png](images/clustered-video-stream-instance-deploy.png)
 
 
 ## Deploy the clustered-video-stream stack
@@ -104,11 +104,167 @@ Lambda@Edge functions must be defined in us-east-1 before they can be attached t
 
 **Result**
 
-* ![Image: clustered-video-stream-deploy.png](images/clustered-video-stream-deploy.png)
+![Image: clustered-video-stream-deploy.png](images/clustered-video-stream-deploy.png)
 
-## Create the merged master playlist  
+## Create the Merged Master Playlist  
 
-1.  **Instructions coming soon!**
+The merged master playlist combines the master playlist entries from each origin into a single playlist that can be used to switch between hosts (AWS regions) when the client's player detects a problem. 
+
+You will need:
+
+1. curl or httpie tool
+2. text editor
+2. DistributionPlaylistUrl for RegionOne and RegionTwo
+3. MasterPlaylistBucket names for RegionOne and RegionTwo
+4. MasterPlaylistCloudfrontDomain name
+
+### Getting Playlists
+
+1. Open a new text file in your editor
+2. Use curl or httpie to get playlists from RegionOne and RegionTwo DistributionPlaylistUrl
+3. Copy each playlist into the editor, one after the other
+
+Your command might look something like this:
+
+`curl https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index.m3u8`
+
+The output will look like:
+
+```
+#EXTM3U
+#EXT-X-VERSION:4
+#EXT-X-INDEPENDENT-SEGMENTS
+#EXT-X-STREAM-INF:BANDWIDTH=4285600,AVERAGE-BANDWIDTH=4285600,RESOLUTION=1280x720,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+index_1.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2635564,AVERAGE-BANDWIDTH=2635564,RESOLUTION=960x540,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+index_2.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1425600,AVERAGE-BANDWIDTH=1425600,RESOLUTION=640x360,FRAME-RATE=30.000,CODECS="avc1.4D401E,mp4a.40.2"
+index_3.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1900000,CODECS="avc1.4D401F",RESOLUTION=1280x720,URI="index_4.m3u8"
+
+```
+
+Copy all of this into the editor and do the same the other region.
+
+
+### Editing and Removing Extras
+
+1. Remove the additional header from the RegionTwo playlist content
+2. Make all relative URLs into absolute URLs by adding the fully qualified domain names to each child playlist
+2. Special consideration for other playlists
+
+Leave a single header at the top of the text file. Remove the header pasted from the RegionTwo playlist:
+
+```
+#EXTM3U
+#EXT-X-VERSION:4
+#EXT-X-INDEPENDENT-SEGMENTS
+```
+
+Add the fully qualified domain name to each child playlist. Add the RegionOne DistributionPlaylistUrl domain name and path to the first set of child playlists. Add the RegionTwo DistributionPlaylistUrl domain name and path to the second set of child playlists. Your file should look similar to the example below.
+
+
+```
+#EXTM3U
+#EXT-X-VERSION:4
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-STREAM-INF:BANDWIDTH=4285600,AVERAGE-BANDWIDTH=4285600,RESOLUTION=1280x720,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_1.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2635564,AVERAGE-BANDWIDTH=2635564,RESOLUTION=960x540,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_2.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1425600,AVERAGE-BANDWIDTH=1425600,RESOLUTION=640x360,FRAME-RATE=30.000,CODECS="avc1.4D401E,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_3.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1900000,CODECS="avc1.4D401F",RESOLUTION=1280x720,URI="index_4.m3u8"
+
+#EXT-X-STREAM-INF:BANDWIDTH=4285600,AVERAGE-BANDWIDTH=4285600,RESOLUTION=1280x720,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_1.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2635564,AVERAGE-BANDWIDTH=2635564,RESOLUTION=960x540,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_2.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1425600,AVERAGE-BANDWIDTH=1425600,RESOLUTION=640x360,FRAME-RATE=30.000,CODECS="avc1.4D401E,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_3.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1900000,CODECS="avc1.4D401F",RESOLUTION=1280x720,URI="index_4.m3u8"
+```
+
+You will also need to find and update other playlist statements in the file. Generally, you will need to turn any relative URL or standalone filename into an absolute URL with a hostname and path. Notice the two `#EXT-X-I-FRAME-STREAM-INF` playlists above and the change below.
+
+```
+#EXTM3U
+#EXT-X-VERSION:4
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-STREAM-INF:BANDWIDTH=4285600,AVERAGE-BANDWIDTH=4285600,RESOLUTION=1280x720,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_1.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2635564,AVERAGE-BANDWIDTH=2635564,RESOLUTION=960x540,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_2.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1425600,AVERAGE-BANDWIDTH=1425600,RESOLUTION=640x360,FRAME-RATE=30.000,CODECS="avc1.4D401E,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_3.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1900000,CODECS="avc1.4D401F",RESOLUTION=1280x720,URI="https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_4.m3u8"
+
+#EXT-X-STREAM-INF:BANDWIDTH=4285600,AVERAGE-BANDWIDTH=4285600,RESOLUTION=1280x720,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_1.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2635564,AVERAGE-BANDWIDTH=2635564,RESOLUTION=960x540,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_2.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1425600,AVERAGE-BANDWIDTH=1425600,RESOLUTION=640x360,FRAME-RATE=30.000,CODECS="avc1.4D401E,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_3.m3u8
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1900000,CODECS="avc1.4D401F",RESOLUTION=1280x720,URI="https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_4.m3u8"
+```
+
+### Combining Bitrates
+
+Cut and paste the child playlist entries from RegionTwo to right after the same bitrate for the child playlist from RegionOne. All the bitrates will be grouped together when you are finished.
+
+### Finished Example
+
+Your finished playlist will look similar to this one. You can add extra space to the file to help with readability. This is an HLS playlist with redundant bitrates that are provided by origins that are physically located in different regions. The player at the client's side can choose the best bitrate based on responses and local network conditions.
+
+```
+#EXTM3U
+#EXT-X-VERSION:4
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-STREAM-INF:BANDWIDTH=4285600,AVERAGE-BANDWIDTH=4285600,RESOLUTION=1280x720,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_1.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=4285600,AVERAGE-BANDWIDTH=4285600,RESOLUTION=1280x720,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_1.m3u8
+
+#EXT-X-STREAM-INF:BANDWIDTH=2635564,AVERAGE-BANDWIDTH=2635564,RESOLUTION=960x540,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_2.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2635564,AVERAGE-BANDWIDTH=2635564,RESOLUTION=960x540,FRAME-RATE=30.000,CODECS="avc1.4D401F,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_2.m3u8
+
+#EXT-X-STREAM-INF:BANDWIDTH=1425600,AVERAGE-BANDWIDTH=1425600,RESOLUTION=640x360,FRAME-RATE=30.000,CODECS="avc1.4D401E,mp4a.40.2"
+https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_3.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1425600,AVERAGE-BANDWIDTH=1425600,RESOLUTION=640x360,FRAME-RATE=30.000,CODECS="avc1.4D401E,mp4a.40.2"
+https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_3.m3u8
+
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1900000,CODECS="avc1.4D401F",RESOLUTION=1280x720,URI="https://d1q747mcnm9q46.cloudfront.net/out/v1/f53b2dd7810e43f4a05bffec4aa5c7a1/index_4.m3u8"
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=1900000,CODECS="avc1.4D401F",RESOLUTION=1280x720,URI="https://d3623mp9gw7c0l.cloudfront.net/out/v1/3889cc3066c34b11ad01a1be071fb09a/index_4.m3u8"
+```
+
+### Upload to Master Playlist Buckets
+
+After you have saved your master playlist with a meaningful name, like playlist.m3u8, you will need to upload it to each MasterPlaylistBucket. Remember to upload the playlist to the same relative location in each bucket. Use the same prefixes for each. See below for an example.
+
+```
+aws s3 cp playlist.m3u8 s3://cvs-instance-playlistbucket-1ghz902blp7bp [--profile profilename]
+aws s3 cp playlist.m3u8 s3://cvs-instance-playlistbucket-1l6j54b8mahdq [--profile profilename]
+```
+
+### Invalidate CloudFront's Cache
+
+Once the playlist has been uploaded to each bucket, you will need to invalidate CloudFront's cache for the MasterPlaylistCloudfrontDomain if you are updating or replacing the file. You will not need to invalidate CloudFront's cache the first time you upload the playlist file.
+
+1. Open the AWS Console
+2. Navigate to the CloudFront console
+3. Enter the MasterPlaylistCloudfrontDomain name in the search and press ENTER
+4. Select the distribution and click the Distribution Settings button
+5. Select the Invalidations tab
+6. Click the Create Invalidation button
+7. Enter the path and file name for the playlist or enter `/*` to clear everything
+
+Wait a few seconds for the invalidation to complete.
+
 
 # Testing the deployment
 
