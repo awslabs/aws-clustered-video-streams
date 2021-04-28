@@ -46,7 +46,7 @@ let detector_options = {
     "sqs_url": process.env.SPD_SQS_URL,
     "stale_tolerance": process.env.SPD_STALE_TOLERANCE ? Number.parseFloat(process.env.SPD_STALE_TOLERANCE) : 0.95,
     "change_detect": process.env.SPD_CHANGE_DETECT || "MEDIASEQUENCE",
-    "segment_pause_divisor": process.env.SPD_SEGMENT_PAUSE_DIVISOR || 5
+    "segment_pause_divisor": process.env.SPD_SEGMENT_PAUSE_DIVISOR ? Number.parseInt(process.env.SPD_SEGMENT_PAUSE_DIVISOR) : 5
 };
 
 const Detector = require("./detector").Detector;
