@@ -28,10 +28,6 @@ var get_playlists_with_segments = async function(master_url, current_url, playli
 };
 
 class Detector {
-    start() {
-        this.fsm.start();
-    }
-
     constructor(options) {
         // save a copy of the options used to initialize this detector
         this.options = options;
@@ -40,7 +36,9 @@ class Detector {
         // out playlist objects
         this.playlists = [];
         // last state we notified
-        this.last_notified_state = "fresh";
+        this.last_notified_state = "";
+        this.last_fresh_count = 0;
+        this.last_stale_count = 0;
         // default pause between samples
         this.pause_ms = 500;
         // pause time during configuration back-off
@@ -83,21 +81,23 @@ class Detector {
                         await get_playlists_with_segments(detector_object.options.origin_url, detector_object.options.origin_url, playlists);
                         if (!playlists.length) {
                             logger.error("no playlists");
-                            let report = {
-                                options: detector_object.options,
-                                playlists: {},
-                                detector: {
-                                    total: 0,
-                                    fresh: 0,
-                                    stale: 0,
-                                    stale_playlist_percent: 100,
-                                    stale_tolerance_percent: (detector_object.options.stale_tolerance * 100),
-                                    state: "stale",
-                                    sequence: detector_object.internal_sequence++
-                                }
-                            };
-                            notify(JSON.stringify(report), detector_object.options);
-                            detector_object.last_notified_state = "stale";
+                            if (detector_object.last_notified_state != "stale") {
+                                let report = {
+                                    options: detector_object.options,
+                                    playlists: {},
+                                    detector: {
+                                        total: 0,
+                                        fresh: 0,
+                                        stale: 0,
+                                        stale_playlist_percent: 100,
+                                        stale_tolerance_percent: (detector_object.options.stale_tolerance * 100),
+                                        state: "stale",
+                                        sequence: detector_object.internal_sequence++
+                                    }
+                                };
+                                notify(JSON.stringify(report), detector_object.options);
+                                detector_object.last_notified_state = "stale";
+                            }
                             this.transition("configure-back-off");
                         } else {
                             detector_object.playlists = [];
@@ -223,6 +223,11 @@ class Detector {
             logger.info(JSON.stringify(event), JSON.stringify(data));
         });
     }
+
+    start() {
+        this.fsm.start();
+    }
+
 }
 
 exports.Detector = Detector;
