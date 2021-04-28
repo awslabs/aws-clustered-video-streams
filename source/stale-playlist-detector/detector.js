@@ -25,12 +25,12 @@ var get_playlists_with_segments = async function(master_url, current_url, playli
             await get_playlists_with_segments(master_url, absolute_url, playlists);
         }
     }
-}
+};
 
 class Detector {
     start() {
         this.fsm.start();
-    };
+    }
 
     constructor(options) {
         // save a copy of the options used to initialize this detector
@@ -43,12 +43,14 @@ class Detector {
         this.last_notified_state = "fresh";
         // default pause between samples
         this.pause_ms = 500;
-        // calculated pause is 1/5 * segment time
-        this.segment_pause_divisor = 5;
-        let classobject = this;
+        // pause time during configuration back-off
+        this.configure_back_off_pause_ms = 2500;
+        // default pause is (segment time / segment_pause_divisor)
+        this.segment_pause_divisor = options.segment_pause_divisor;
+        let detector_object = this;
         // create the detector's state machine
         this.fsm = new machina.Fsm({
-            initialize: function(options) {},
+            initialize: function() {},
             namespace: options.cdn_url,
             initialState: "uninitialized",
             states: {
@@ -78,102 +80,133 @@ class Detector {
                     _onEnter: async function() {
                         // find the playlists with segments
                         let playlists = [];
-                        await get_playlists_with_segments(classobject.options.origin_url, classobject.options.origin_url, playlists);
-                        classobject.playlists = [];
-                        // this handles the fresh and stale events emitted
-                        var playlist_event_handler = (function() {
-                            let detector = classobject;
-                            return function(playlist) {
-                                let total = detector.playlists.length;
-                                let stale = 0;
-                                let fresh = 0;
-                                let report = {
-                                    options: classobject.options,
-                                    playlists: {}
-                                };
-                                for (let playlist of detector.playlists) {
-                                    stale += (playlist.fsm.state == "stale");
-                                    fresh += (playlist.fsm.state == "fresh");
-                                    report.playlists[playlist.options.url] = {
-                                        state: playlist.fsm.state,
-                                        changed: playlist.last_sample.timeseconds,
-                                        duration: playlist.last_sample.duration,
-                                        mean_duration: playlist.mean_duration,
-                                        median_duration: playlist.median_duration,
-                                        min_duration: playlist.min_duration,
-                                        max_duration: playlist.max_duration
-                                    };
-                                }
-                                if (stale + fresh == total) {
-                                    // only measure once all fsms have reported
-                                    let fraction = stale / total;
-                                    report.detector = {
-                                        total: total,
-                                        fresh: fresh,
-                                        stale: stale,
-                                        stale_playlist_percent: (fraction * 100),
-                                        stale_tolerance_percent: (detector.options.stale_tolerance * 100)
-                                    };
-                                    logger.info(`${total} total playlists, ${fresh} fresh, ${stale} stale, ${fraction * 100}% stale, ${detector.options.stale_tolerance * 100}% stale tolerance`);
-                                    if (fraction >= detector.options.stale_tolerance) {
-                                        if (detector.last_notified_state != "stale") {
-                                            report.detector.state = "stale";
-                                            // notify
-                                            report.detector.sequence = detector.internal_sequence++;
-                                            notify(JSON.stringify(report), classobject.options);
-                                            detector.last_notified_state = "stale";
-                                        }
-                                    } else {
-                                        if (detector.last_notified_state != "fresh") {
-                                            report.detector.state = "fresh";
-                                            // notify
-                                            report.detector.sequence = detector.internal_sequence++;
-                                            notify(JSON.stringify(report), classobject.options);
-                                            detector.last_notified_state = "fresh";
-                                        }
-                                    }
+                        await get_playlists_with_segments(detector_object.options.origin_url, detector_object.options.origin_url, playlists);
+                        if (!playlists.length) {
+                            logger.error("no playlists");
+                            let report = {
+                                options: detector_object.options,
+                                playlists: {},
+                                detector: {
+                                    total: 0,
+                                    fresh: 0,
+                                    stale: 0,
+                                    stale_playlist_percent: 100,
+                                    stale_tolerance_percent: (detector_object.options.stale_tolerance * 100),
+                                    state: "stale",
+                                    sequence: detector_object.internal_sequence++
                                 }
                             };
-                        })();
-                        for (let url of playlists) {
-                            let playlist = new Playlist({
-                                detector_options: options,
-                                url: url,
-                                description: url,
-                                detector: classobject
-                            });
-                            playlist.fsm.on("fresh", playlist_event_handler);
-                            playlist.fsm.on("stale", playlist_event_handler);
-                            playlist.start();
-                            classobject.playlists.push(playlist);
+                            notify(JSON.stringify(report), detector_object.options);
+                            detector_object.last_notified_state = "stale";
+                            this.transition("configure-back-off");
+                        } else {
+                            detector_object.playlists = [];
+                            // this handles the fresh and stale events emitted
+                            var playlist_event_handler = (function() {
+                                let detector = detector_object;
+                                return function() {
+                                    let total = detector.playlists.length;
+                                    let stale = 0;
+                                    let fresh = 0;
+                                    let report = {
+                                        options: detector_object.options,
+                                        playlists: {}
+                                    };
+                                    for (let playlist of detector.playlists) {
+                                        stale += (playlist.fsm.state == "stale");
+                                        fresh += (playlist.fsm.state == "fresh");
+                                        report.playlists[playlist.options.url] = {
+                                            state: playlist.fsm.state,
+                                            changed: playlist.last_sample.timeseconds,
+                                            duration: playlist.last_sample.duration,
+                                            mean_duration: playlist.mean_duration,
+                                            median_duration: playlist.median_duration,
+                                            min_duration: playlist.min_duration,
+                                            max_duration: playlist.max_duration
+                                        };
+                                    }
+                                    if (stale + fresh == total) {
+                                        // only measure once all fsms have reported
+                                        let fraction = stale / total;
+                                        report.detector = {
+                                            total: total,
+                                            fresh: fresh,
+                                            stale: stale,
+                                            stale_playlist_percent: (fraction * 100),
+                                            stale_tolerance_percent: (detector.options.stale_tolerance * 100)
+                                        };
+                                        logger.info(`${total} total playlists, ${fresh} fresh, ${stale} stale, ${fraction * 100}% stale, ${detector.options.stale_tolerance * 100}% stale tolerance`);
+                                        if (fraction >= detector.options.stale_tolerance) {
+                                            if (detector.last_notified_state != "stale") {
+                                                report.detector.state = "stale";
+                                                // notify
+                                                report.detector.sequence = detector.internal_sequence++;
+                                                notify(JSON.stringify(report), detector_object.options);
+                                                detector.last_notified_state = "stale";
+                                            }
+                                        } else {
+                                            if (detector.last_notified_state != "fresh") {
+                                                report.detector.state = "fresh";
+                                                // notify
+                                                report.detector.sequence = detector.internal_sequence++;
+                                                notify(JSON.stringify(report), detector_object.options);
+                                                detector.last_notified_state = "fresh";
+                                            }
+                                        }
+                                    }
+                                };
+                            })();
+                            for (let url of playlists) {
+                                let playlist = new Playlist({
+                                    detector_options: options,
+                                    url: url,
+                                    description: url,
+                                    detector: detector_object
+                                });
+                                playlist.fsm.on("fresh", playlist_event_handler);
+                                playlist.fsm.on("stale", playlist_event_handler);
+                                playlist.start();
+                                detector_object.playlists.push(playlist);
+                            }
+                            this.transition("check");
                         }
-                        this.transition("check");
+                    }
+                },
+                "configure-back-off": {
+                    _onEnter: () => {
+                        logger.info(`pausing for ${detector_object.configure_back_off_pause_ms} ms`);
+                        var f = (function() {
+                            return function() {
+                                detector_object.fsm.transition("configure");
+                            };
+                        })();
+                        setTimeout(f, detector_object.configure_back_off_pause_ms);
                     }
                 },
                 "check": {
                     _onEnter: function() {
-                        for (let playlist of classobject.playlists) {
+                        for (let playlist of detector_object.playlists) {
                             playlist.refresh();
                         }
                         this.transition("pause");
                     }
                 },
                 "pause": {
-                    _onEnter: (options) => {
+                    _onEnter: () => {
                         // use the default or calculate a better pause_ms value
-                        if (classobject.playlists[0].last_sample && classobject.playlists[0].last_sample.duration) {
-                            let duration = classobject.playlists[0].last_sample.duration;
+                        if (detector_object.playlists[0].last_sample && detector_object.playlists[0].last_sample.duration) {
+                            let duration = detector_object.playlists[0].last_sample.duration;
                             if (duration) {
-                                classobject.pause_ms = Number.parseInt((duration * 1000) / classobject.segment_pause_divisor);
+                                detector_object.pause_ms = Number.parseInt((duration * 1000) / detector_object.segment_pause_divisor);
                             }
                         }
-                        logger.info(`pausing for ${classobject.pause_ms}ms [${classobject.options.origin_url}]`);
+                        logger.info(`pausing for ${detector_object.pause_ms}ms [${detector_object.options.origin_url}]`);
                         var f = (function() {
                             return function() {
-                                classobject.fsm.transition("check");
+                                detector_object.fsm.transition("check");
                             };
                         })();
-                        setTimeout(f, classobject.pause_ms);
+                        setTimeout(f, detector_object.pause_ms);
                     }
                 },
                 "configuration-problem": {

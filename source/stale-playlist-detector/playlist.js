@@ -3,7 +3,6 @@
 
 'use strict';
 
-const _ = require("lodash");
 const crypto = require('crypto');
 const epoch = require("./epoch").timeseconds;
 const http_get = require("./http").http_get;
@@ -65,7 +64,7 @@ class Playlist {
         this.options = options;
         this.duration_multiplier = options.duration_multiplier ? Number.parseFloat(options.duration_multiplier) : 1.5;
         this.last_sample = {
-            "timeseconds": 0,
+            "timeseconds": epoch(),
             "hash": "",
             "media_sequence": 0,
             "duration": 0
@@ -76,9 +75,9 @@ class Playlist {
         this.max_duration = 0;
         this.median_duration = 0;
         this.mean_duration = 0;
-        let classobject = this;
+        let playlist_object = this;
         this.fsm = new machina.Fsm({
-            initialize: function(options) {},
+            initialize: function() {},
             namespace: options.url,
             initialState: "uninitialized",
             states: {
@@ -91,11 +90,11 @@ class Playlist {
                 "validate": {
                     _onEnter: function() {
                         // check that we have minimal configuration to run
-                        if (!classobject.options.url) {
+                        if (!playlist_object.options.url) {
                             logger.error("options.url is missing");
                             this.transition("configuration-problem");
                         } else {
-                            this.transition("configure")
+                            this.transition("configure");
                         }
                     }
                 },
@@ -107,7 +106,7 @@ class Playlist {
                 "refresh": {
                     _onEnter: async function() {
                         try {
-                            let data = await http_get(classobject.options.url);
+                            let data = await http_get(playlist_object.options.url);
                             let parser = new m3u8_parser.Parser();
                             parser.push(data.body);
                             parser.end();
@@ -115,11 +114,11 @@ class Playlist {
                             // get the segment duration
                             // let duration = (parser.manifest && parser.manifest.targetDuration) ? Number.parseFloat(parser.manifest.targetDuration) : 0;
                             let duration = lowest_duration(parser.manifest);
-                            logger.info(`specified duration is ${duration}s [${classobject.options.url}]`);
+                            logger.info(`specified duration is ${duration}s [${playlist_object.options.url}]`);
                             let hex = playlist_hash(data.body);
-                            logger.info(`playist hash is ${hex} [${classobject.options.url}]`);
+                            logger.info(`playist hash is ${hex} [${playlist_object.options.url}]`);
                             let media_sequence = Number.parseInt(parser.manifest.mediaSequence);
-                            logger.info(`media sequence is ${media_sequence} [${classobject.options.url}]`);
+                            logger.info(`media sequence is ${media_sequence} [${playlist_object.options.url}]`);
                             this.transition("check", {
                                 "timeseconds": now,
                                 "hash": hex,
@@ -128,40 +127,41 @@ class Playlist {
                             });
                         } catch (error) {
                             logger.error(error);
-                            this.transition("check", classobject.last_sample);
+                            this.transition("check", playlist_object.last_sample);
                         }
                     }
                 },
                 "check": {
                     _onEnter: async function(input) {
                         // compare current sample to last changed sample
-                        if (classobject.changed(input)) {
+                        if (playlist_object.changed(input)) {
                             // changed
-                            let change_duration_seconds = input.timeseconds - classobject.last_sample.timeseconds;
-                            classobject.last_sample = input;
-                            logger.info(`changed after ${change_duration_seconds}s [${classobject.options.url}]`);
-                            classobject.change_durations.push(change_duration_seconds);
-                            while (classobject.change_durations.length > classobject.change_durations_max) {
-                                classobject.change_durations.shift();
+                            let change_duration_seconds = input.timeseconds - playlist_object.last_sample.timeseconds;
+                            playlist_object.last_sample = input;
+                            logger.info(`changed after ${change_duration_seconds}s [${playlist_object.options.url}]`);
+                            playlist_object.change_durations.push(change_duration_seconds);
+                            while (playlist_object.change_durations.length > playlist_object.change_durations_max) {
+                                playlist_object.change_durations.shift();
                             }
+                            logger.info(`change duration list: ${playlist_object.change_durations} [${playlist_object.options.url}]`);
                             // logger.info(JSON.stringify(classobject.change_durations));
-                            classobject.p90_duration = jstat.percentile(classobject.change_durations, 0.90).toFixed(1);
-                            classobject.mean_duration = jstat.mean(classobject.change_durations).toFixed(1);
-                            classobject.median_duration = jstat.median(classobject.change_durations).toFixed(1);
-                            classobject.min_duration = jstat.min(classobject.change_durations).toFixed(1);
-                            classobject.max_duration = jstat.max(classobject.change_durations).toFixed(1);
-                            logger.info(`p90 duration is ${classobject.p90_duration}s from ${classobject.change_durations.length} samples [${classobject.options.url}]`);
-                            logger.info(`mean duration is ${classobject.mean_duration}s from ${classobject.change_durations.length} samples [${classobject.options.url}]`);
-                            logger.info(`median duration is ${classobject.median_duration}s from ${classobject.change_durations.length} samples [${classobject.options.url}]`);
-                            logger.info(`min duration is ${classobject.min_duration}s from ${classobject.change_durations.length} samples [${classobject.options.url}]`);
-                            logger.info(`max duration is ${classobject.max_duration}s from ${classobject.change_durations.length} samples [${classobject.options.url}]`);
+                            playlist_object.p90_duration = jstat.percentile(playlist_object.change_durations, 0.90).toFixed(1);
+                            playlist_object.mean_duration = jstat.mean(playlist_object.change_durations).toFixed(1);
+                            playlist_object.median_duration = jstat.median(playlist_object.change_durations).toFixed(1);
+                            playlist_object.min_duration = jstat.min(playlist_object.change_durations).toFixed(1);
+                            playlist_object.max_duration = jstat.max(playlist_object.change_durations).toFixed(1);
+                            logger.info(`p90 duration is ${playlist_object.p90_duration}s from ${playlist_object.change_durations.length} samples [${playlist_object.options.url}]`);
+                            logger.info(`mean duration is ${playlist_object.mean_duration}s from ${playlist_object.change_durations.length} samples [${playlist_object.options.url}]`);
+                            logger.info(`median duration is ${playlist_object.median_duration}s from ${playlist_object.change_durations.length} samples [${playlist_object.options.url}]`);
+                            logger.info(`min duration is ${playlist_object.min_duration}s from ${playlist_object.change_durations.length} samples [${playlist_object.options.url}]`);
+                            logger.info(`max duration is ${playlist_object.max_duration}s from ${playlist_object.change_durations.length} samples [${playlist_object.options.url}]`);
                             this.transition("fresh");
                         } else {
                             // not changed
-                            let max_duration = Number.parseInt(classobject.last_sample.duration * classobject.options.detector_options.duration_multiplier);
-                            logger.info(`maximum allowed duration is ${max_duration}s [${classobject.options.url}]`);
-                            let expected_update = classobject.last_sample.timeseconds + max_duration;
-                            logger.info(`change due by ${new Date(expected_update * 1000).toTimeString()} ${expected_update} [${classobject.options.url}]`);
+                            let max_duration = Number.parseInt(playlist_object.last_sample.duration * playlist_object.options.detector_options.duration_multiplier);
+                            logger.info(`maximum allowed duration is ${max_duration}s [${playlist_object.options.url}]`);
+                            let expected_update = playlist_object.last_sample.timeseconds + max_duration;
+                            logger.info(`change due by ${new Date(expected_update * 1000).toTimeString()} ${expected_update} [${playlist_object.options.url}]`);
                             if (input.timeseconds > expected_update) {
                                 this.transition("stale");
                             } else {
@@ -172,14 +172,14 @@ class Playlist {
                 },
                 "stale": {
                     _onEnter: function() {
-                        logger.error(`stale playlist [${classobject.options.url}]`);
-                        this.emit("stale", classobject);
+                        logger.error(`stale playlist [${playlist_object.options.url}]`);
+                        this.emit("stale", playlist_object);
                     }
                 },
                 "fresh": {
                     _onEnter: function() {
-                        logger.info(`fresh playlist [${classobject.options.url}]`);
-                        this.emit("fresh", classobject);
+                        logger.info(`fresh playlist [${playlist_object.options.url}]`);
+                        this.emit("fresh", playlist_object);
                     }
                 },
                 "configuration-problem": {

@@ -36,13 +36,13 @@ let send_sqs = (sqs_url, region, message) => {
         region: region
     });
     // wrap in a promise
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         var params = {
             MessageBody: message,
             QueueUrl: sqs_url,
         };
         // send it
-        sqs.sendMessage(params, function(err, data) {
+        sqs.sendMessage(params, function(err) {
             if (err) logger.error("error sending SQS"); // an error occurred
             else logger.info("successfully sent SQS"); // successful response
             resolve();
@@ -56,14 +56,14 @@ let send_sns = (topic_arn, region, message) => {
         region: region
     });
     // wrap in a promise
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         var params = {
             Message: message,
             Subject: "Stale Playlist Detector Message",
             TopicArn: topic_arn
         };
         // send it
-        sns.publish(params, function(err, data) {
+        sns.publish(params, function(err) {
             if (err) logger.error("error sending SNS"); // an error occurred
             else logger.info("successfully sent SNS"); // successful response
             resolve();

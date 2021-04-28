@@ -16,6 +16,7 @@ SPD_SQS_URL = queue endpoint (https)
 SPD_SNS_TOPIC = topic arn (AWS ARN) (default 1.5)
 SPD_STALE_TOLERANCE = fraction of playlists that must be stale to notify (default: 0.95)
 SPD_CHANGE_DETECT = MEDIASEQUENCE or CONTENTHASH (method to determine when playlist changes, default: MEDIASEQUENCE)
+SPD_SEGMENT_PAUSE_DIVISOR = the segment time (like 2,4,6 seconds) / this number = time to wait between playlist samples (default 5)
 
 Setting SPD_SQS_URL or SPD_SNS_TOPIC variables also requires access to a role or credentials
 by the AWS SDK that grants permissions to these services for use.
@@ -44,7 +45,8 @@ let detector_options = {
     "sns_topic": process.env.SPD_SNS_TOPIC,
     "sqs_url": process.env.SPD_SQS_URL,
     "stale_tolerance": process.env.SPD_STALE_TOLERANCE ? Number.parseFloat(process.env.SPD_STALE_TOLERANCE) : 0.95,
-    "change_detect": process.env.SPD_CHANGE_DETECT || "MEDIASEQUENCE"
+    "change_detect": process.env.SPD_CHANGE_DETECT || "MEDIASEQUENCE",
+    "segment_pause_divisor": process.env.SPD_SEGMENT_PAUSE_DIVISOR || 5
 };
 
 const Detector = require("./detector").Detector;
