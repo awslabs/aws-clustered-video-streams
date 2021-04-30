@@ -41,7 +41,7 @@ pytz==2019.1
 PyYAML==5.4
 regex==2019.5.25
 requests==2.20.1
-rsa==4.1
+rsa==4.7
 s3transfer==0.3.3
 serverlessrepo==0.1.8
 six==1.13.0
