@@ -6,7 +6,7 @@
 const http = require('http');
 const https = require('https');
 
-exports.http_get = async(url) => {
+exports.http_get = (url) => {
     let client = (url.startsWith("https:") ? https : http);
     // wrap the HTTP request in a promise
     let promise = new Promise((resolve, reject) => {
@@ -27,7 +27,7 @@ exports.http_get = async(url) => {
         });
         request.on('socket', (socket) => {
             // connection/transmission timeout
-            socket.setTimeout(5000);
+            socket.setTimeout(2000);
             socket.on('timeout', () => {
                 request.destroy();
             });

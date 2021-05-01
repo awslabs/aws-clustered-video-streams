@@ -16,7 +16,8 @@ SPD_SQS_URL = queue endpoint (https)
 SPD_SNS_TOPIC = topic arn (AWS ARN) (default 1.5)
 SPD_STALE_TOLERANCE = fraction of playlists that must be stale to notify (default: 0.95)
 SPD_CHANGE_DETECT = MEDIASEQUENCE or CONTENTHASH (method to determine when playlist changes, default: MEDIASEQUENCE)
-SPD_SEGMENT_PAUSE_DIVISOR = the segment time (like 2,4,6 seconds) / this number = time to wait between playlist samples (default 5)
+SPD_SEGMENT_PAUSE_DIVISOR = the segment time (like 2,4,6 seconds) / this number = time to wait between playlist samples (default: 5)
+SPD_RELOAD_ON_TOP_LEVEL_CHANGE = reload the configuration of the top-level playlist changes (default: true)
 
 Setting SPD_SQS_URL or SPD_SNS_TOPIC variables also requires access to a role or credentials
 by the AWS SDK that grants permissions to these services for use.
@@ -46,7 +47,8 @@ let detector_options = {
     "sqs_url": process.env.SPD_SQS_URL,
     "stale_tolerance": process.env.SPD_STALE_TOLERANCE ? Number.parseFloat(process.env.SPD_STALE_TOLERANCE) : 0.95,
     "change_detect": process.env.SPD_CHANGE_DETECT || "MEDIASEQUENCE",
-    "segment_pause_divisor": process.env.SPD_SEGMENT_PAUSE_DIVISOR ? Number.parseInt(process.env.SPD_SEGMENT_PAUSE_DIVISOR) : 5
+    "segment_pause_divisor": process.env.SPD_SEGMENT_PAUSE_DIVISOR ? Number.parseInt(process.env.SPD_SEGMENT_PAUSE_DIVISOR) : 5,
+    "reload_on_top_level_change": process.env.SPD_RELOAD_ON_TOP_LEVEL_CHANGE ? process.env.SPD_RELOAD_ON_TOP_LEVEL_CHANGE.toLowerCase() == "true" : false
 };
 
 const Detector = require("./detector").Detector;

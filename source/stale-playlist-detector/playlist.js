@@ -17,20 +17,21 @@ let playlist_hash = (text) => {
     return hash.digest('hex');
 };
 
-let lowest_duration = (manifest) => {
-    // take the lowest duration from the segments or playlist
-    let duration = Number.MAX_SAFE_INTEGER;
+let best_duration = (manifest) => {
+    let duration = 0;
+    // start with target duration if provided in the playlist
+    if (manifest.targetDuration) {
+        duration = manifest.targetDuration;
+    }
+    // if needed, take the longest duration from the segments
     if (manifest.segments) {
         for (let segment of manifest.segments) {
             if (segment.duration) {
-                duration = Math.min(duration, segment.duration);
+                duration = Math.max(duration, segment.duration);
             }
         }
     }
-    if (duration == Number.MAX_SAFE_INTEGER) {
-        duration = Math.min(manifest.targetDuration, duration);
-    }
-    return Number.parseInt(duration);
+    return duration;
 };
 
 class Playlist {
@@ -112,11 +113,10 @@ class Playlist {
                             parser.end();
                             let now = epoch();
                             // get the segment duration
-                            // let duration = (parser.manifest && parser.manifest.targetDuration) ? Number.parseFloat(parser.manifest.targetDuration) : 0;
-                            let duration = lowest_duration(parser.manifest);
-                            logger.info(`specified duration is ${duration}s [${playlist_object.options.url}]`);
+                            let duration = best_duration(parser.manifest);
+                            logger.info(`best duration is ${duration}s [${playlist_object.options.url}]`);
                             let hex = playlist_hash(data.body);
-                            logger.info(`playist hash is ${hex} [${playlist_object.options.url}]`);
+                            logger.info(`playlist hash is ${hex} [${playlist_object.options.url}]`);
                             let media_sequence = Number.parseInt(parser.manifest.mediaSequence);
                             logger.info(`media sequence is ${media_sequence} [${playlist_object.options.url}]`);
                             this.transition("check", {
@@ -144,7 +144,6 @@ class Playlist {
                                 playlist_object.change_durations.shift();
                             }
                             logger.info(`change duration list: ${playlist_object.change_durations} [${playlist_object.options.url}]`);
-                            // logger.info(JSON.stringify(classobject.change_durations));
                             playlist_object.p90_duration = jstat.percentile(playlist_object.change_durations, 0.90).toFixed(1);
                             playlist_object.mean_duration = jstat.mean(playlist_object.change_durations).toFixed(1);
                             playlist_object.median_duration = jstat.median(playlist_object.change_durations).toFixed(1);
