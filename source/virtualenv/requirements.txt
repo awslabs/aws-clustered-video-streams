@@ -49,7 +49,7 @@ termcolor==1.1.0
 typed-ast==1.3.5
 typing==3.6.4
 tzlocal==1.5.1
-urllib3==1.25.8
+urllib3==1.26.5
 websocket-client==0.56.0
 Werkzeug==0.15.4
 whichcraft==0.5.2
